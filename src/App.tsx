@@ -921,7 +921,7 @@ export default function App() {
           <div>
             <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
               <FileSpreadsheet className="w-6 h-6 text-blue-600" />
-              PDRM Dashboard
+              SSPDRM Dashboard
             </h1>
             <div className="flex items-center gap-3 mt-2">
               <p className="text-sm text-gray-500">
