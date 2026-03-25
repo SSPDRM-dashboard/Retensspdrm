@@ -48,7 +48,7 @@ const months = [
   'JULY', 'AUGUST', 'SEPTEMBER', 'OCTOBER', 'NOVEMBER', 'DECEMBER'
 ];
 
-const districts = ['ALOR GAJAH', 'MELAKA TENGAH', 'JASIN'];
+const districts = ['IPK SSPDRM', 'ALOR GAJAH', 'MELAKA TENGAH', 'JASIN'];
 const years = [2024, 2025, 2026, 2027, 2028];
 
 type TabType = 'DAILY' | 'WEEKLY' | 'RANK';
