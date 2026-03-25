@@ -1,0 +1,5 @@
+{
+  "name": "PDRM Volunteer Dashboard",
+  "description": "Monthly summary dashboard for Sukarelawan Polis Diraja Malaysia with print and PDF export capabilities.",
+  "requestFramePermissions": []
+}

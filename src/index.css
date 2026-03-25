@@ -1,0 +1,64 @@
+@import "tailwindcss";
+
+@media print {
+  @page {
+    size: landscape;
+    margin: 5mm;
+  }
+  
+  body {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+    background-color: white !important;
+  }
+  
+  .print\:hidden {
+    display: none !important;
+  }
+
+  .html2pdf__page-break {
+    page-break-after: always !important;
+    break-after: page !important;
+  }
+
+  /* Force tables to fit on one page vertically if possible */
+  table {
+    font-size: 8px !important;
+    width: 100% !important;
+    table-layout: fixed !important;
+    break-inside: avoid !important;
+  }
+
+  th, td {
+    padding: 1px !important;
+    word-wrap: break-word !important;
+    overflow: hidden !important;
+    line-height: 1 !important;
+  }
+
+  h2 {
+    font-size: 12px !important;
+    margin-bottom: 2px !important;
+  }
+
+  .mb-6, .mb-12 {
+    margin-bottom: 2px !important;
+  }
+
+  .p-4, .p-8, .sm\:p-8 {
+    padding: 0 !important;
+  }
+
+  /* Specific scaling for the container to ensure it fits */
+  #report-container {
+    width: 100% !important;
+    max-width: none !important;
+    border: none !important;
+    box-shadow: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    transform: scale(0.98);
+    transform-origin: top center;
+    overflow: visible !important;
+  }
+}
