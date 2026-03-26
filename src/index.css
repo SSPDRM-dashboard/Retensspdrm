@@ -1,9 +1,46 @@
 @import "tailwindcss";
 
+/* Styles for PDF generation mode */
+.pdf-mode {
+  width: 100% !important;
+  max-width: none !important;
+  border: none !important;
+  box-shadow: none !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  overflow: visible !important;
+}
+
+.pdf-mode table {
+  font-size: 7px !important;
+  width: 100% !important;
+  table-layout: fixed !important;
+  break-inside: avoid !important;
+}
+
+.pdf-mode th, .pdf-mode td {
+  padding: 1px !important;
+  word-wrap: break-word !important;
+  overflow: hidden !important;
+  line-height: 1 !important;
+}
+
+.pdf-mode h2 {
+  font-size: 11px !important;
+  margin-bottom: 2px !important;
+}
+
+.pdf-mode .print-page-container {
+  page-break-after: always !important;
+  page-break-inside: avoid !important;
+  break-inside: avoid !important;
+  width: 100% !important;
+}
+
 @media print {
   @page {
-    size: landscape;
-    margin: 5mm;
+    size: 800pt 500pt;
+    margin: 5pt;
   }
   
   body {
@@ -23,7 +60,7 @@
 
   /* Force tables to fit on one page vertically if possible */
   table {
-    font-size: 8px !important;
+    font-size: 7px !important;
     width: 100% !important;
     table-layout: fixed !important;
     break-inside: avoid !important;
@@ -37,7 +74,7 @@
   }
 
   h2 {
-    font-size: 12px !important;
+    font-size: 11px !important;
     margin-bottom: 2px !important;
   }
 
@@ -51,14 +88,24 @@
 
   /* Specific scaling for the container to ensure it fits */
   #report-container {
-    width: 100% !important;
-    max-width: none !important;
+    width: 1400px !important;
+    max-width: 1400px !important;
     border: none !important;
     box-shadow: none !important;
     margin: 0 !important;
     padding: 0 !important;
-    transform: scale(0.98);
-    transform-origin: top center;
+    transform: scale(0.65);
+    transform-origin: top left;
     overflow: visible !important;
+  }
+
+  .print-page-container {
+    page-break-after: always !important;
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+    width: 100% !important;
+    height: auto !important;
+    max-height: none !important;
+    overflow: hidden !important;
   }
 }

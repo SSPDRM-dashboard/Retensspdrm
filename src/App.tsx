@@ -1,7 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { Printer, FileSpreadsheet, CalendarDays, CalendarRange, Users, Database, RefreshCw, AlertCircle, CheckCircle2, Download } from 'lucide-react';
 import Papa from 'papaparse';
-
 import html2pdf from 'html2pdf.js';
 
 // --- MOCK DATA FALLBACK ---
@@ -48,8 +47,15 @@ const months = [
   'JULY', 'AUGUST', 'SEPTEMBER', 'OCTOBER', 'NOVEMBER', 'DECEMBER'
 ];
 
-const districts = ['IPK SSPDRM', 'ALOR GAJAH', 'MELAKA TENGAH', 'JASIN'];
+const districts = ['ALOR GAJAH', 'MELAKA TENGAH', 'JASIN', 'IPK SSPDRM'];
 const years = [2024, 2025, 2026, 2027, 2028];
+
+// ==========================================
+// CONFIGURATION
+// ==========================================
+// PASTE YOUR GOOGLE SHEET ID HERE
+// Example: "1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms"
+const GOOGLE_SHEET_ID = "1mD8nfxGetTY1Xi4o4d471eCFOCDmbEJ_ZclBguqsnMI";
 
 type TabType = 'DAILY' | 'WEEKLY' | 'RANK';
 
@@ -68,11 +74,8 @@ export default function App() {
   const [printMode, setPrintMode] = useState<'CURRENT' | 'ALL'>('CURRENT');
   const [isGeneratingPDF, setIsGeneratingPDF] = useState(false);
   const [showPrintModal, setShowPrintModal] = useState(false);
-  const [showSettingsModal, setShowSettingsModal] = useState(false);
   
   // Google Sheets State
-  const [sheetUrl, setSheetUrl] = useState('');
-  const [sheetId, setSheetId] = useState('');
   const [rawData, setRawData] = useState<any[]>([]);
   const [csvFields, setCsvFields] = useState<string[]>([]);
   const [rawCsvText, setRawCsvText] = useState<string>('');
@@ -80,25 +83,19 @@ export default function App() {
   const [error, setError] = useState('');
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
 
-  // Load saved sheet ID on mount
+  // Load saved auth on mount
   useEffect(() => {
     const savedAuth = localStorage.getItem('pdrm_auth');
     if (savedAuth === 'true') {
       setIsAuthenticated(true);
-    }
-
-    const savedId = localStorage.getItem('pdrm_sheet_id');
-    if (savedId) {
-      setSheetId(savedId);
-      setSheetUrl(`https://docs.google.com/spreadsheets/d/${savedId}`);
     }
   }, []);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (!sheetId) {
-      setLoginError('Please connect a Google Sheet first. Click "Data Source" below.');
+    if (!GOOGLE_SHEET_ID || GOOGLE_SHEET_ID === "YOUR_GOOGLE_SHEET_ID_HERE") {
+      setLoginError('Please set your GOOGLE_SHEET_ID in the code.');
       return;
     }
 
@@ -111,7 +108,7 @@ export default function App() {
     setLoginError('');
 
     try {
-      const response = await fetch(`https://docs.google.com/spreadsheets/d/${sheetId}/gviz/tq?tqx=out:csv&sheet=users`);
+      const response = await fetch(`https://docs.google.com/spreadsheets/d/${GOOGLE_SHEET_ID}/gviz/tq?tqx=out:csv&sheet=users`);
       
       if (!response.ok) {
         throw new Error('Failed to fetch users data. Ensure the sheet is public and has a tab named "users".');
@@ -128,7 +125,11 @@ export default function App() {
         skipEmptyLines: true,
         complete: (results) => {
           const users = results.data as any[];
-          const user = users.find(u => u.Username === username && u.password === password);
+          const user = users.find(u => {
+            const uName = (u.Username || u.username || u.USERNAME || '').toString().trim();
+            const uPass = (u.password || u.Password || u.PASSWORD || '').toString().trim();
+            return uName.toLowerCase() === username.trim().toLowerCase() && uPass === password.trim();
+          });
           
           if (user) {
             setIsAuthenticated(true);
@@ -138,6 +139,7 @@ export default function App() {
             setLoginError('');
           } else {
             setLoginError('Invalid username or password');
+            console.log("Parsed users:", users);
           }
           setIsLoggingIn(false);
         },
@@ -157,36 +159,12 @@ export default function App() {
     localStorage.removeItem('pdrm_auth');
   };
 
-  // Fetch data when sheetId or selectedYear changes
+  // Fetch data when year changes
   useEffect(() => {
-    if (isAuthenticated && sheetId) {
-      fetchSheetData(sheetId, selectedYear);
+    if (isAuthenticated && GOOGLE_SHEET_ID && GOOGLE_SHEET_ID !== "YOUR_GOOGLE_SHEET_ID_HERE") {
+      fetchSheetData(GOOGLE_SHEET_ID, selectedYear);
     }
-  }, [isAuthenticated, sheetId, selectedYear]);
-
-  const extractSheetId = (url: string) => {
-    const match = url.match(/\/d\/([a-zA-Z0-9-_]+)/);
-    return match ? match[1] : url;
-  };
-
-  const handleSaveSettings = () => {
-    const id = extractSheetId(sheetUrl);
-    if (id) {
-      setSheetId(id);
-      localStorage.setItem('pdrm_sheet_id', id);
-      setShowSettingsModal(false);
-    } else {
-      setError('Invalid Google Sheet URL or ID');
-    }
-  };
-
-  const handleDisconnect = () => {
-    setSheetId('');
-    setSheetUrl('');
-    setRawData([]);
-    localStorage.removeItem('pdrm_sheet_id');
-    setShowSettingsModal(false);
-  };
+  }, [isAuthenticated, selectedYear]);
 
   const fetchSheetData = async (id: string, year: number) => {
     if (!id) return;
@@ -239,7 +217,7 @@ export default function App() {
 
   // --- DATA PROCESSING ---
   const processedData = useMemo(() => {
-    if (!sheetId) {
+    if (!GOOGLE_SHEET_ID || GOOGLE_SHEET_ID === "YOUR_GOOGLE_SHEET_ID_HERE") {
       // Fallback to mock data only if no sheet is connected
       return { daily: mockDailyData, weekly: mockWeeklyData, rank: mockRankData, debugLogs: [] };
     }
@@ -261,8 +239,8 @@ export default function App() {
     let colIndices = {
       date: -1,
       district: -1,
-      task: -1,
-      hours: -1,
+      tasks: [] as number[],
+      hours: [] as number[],
       rank: -1,
       colT: -1
     };
@@ -278,8 +256,17 @@ export default function App() {
         headerRowIndex = i;
         colIndices.date = dateIdx;
         colIndices.district = districtIdx;
-        colIndices.task = row.findIndex(c => String(c).toUpperCase().includes('JENIS TUGASAN'));
-        colIndices.hours = row.findIndex(c => String(c).toUpperCase().includes('JUMLAH JAM'));
+        
+        row.forEach((c, idx) => {
+          const str = String(c).toUpperCase();
+          if (str.includes('JENIS TUGASAN')) colIndices.tasks.push(idx);
+          if (str.includes('JUMLAH JAM')) colIndices.hours.push(idx);
+        });
+        
+        // Fallback to C,E,G,I (2,4,6,8) and D,F,H,J (3,5,7,9) if not found dynamically
+        if (colIndices.tasks.length === 0) colIndices.tasks = [2, 4, 6, 8].filter(idx => idx < row.length);
+        if (colIndices.hours.length === 0) colIndices.hours = [3, 5, 7, 9].filter(idx => idx < row.length);
+
         colIndices.rank = row.findIndex(c => String(c).toUpperCase().includes('PANGKAT'));
         colIndices.colT = row.findIndex(c => String(c).toUpperCase().includes('NYATAKAN') || String(c).toUpperCase().includes('LAIN-LAIN TUGAS') && !String(c).toUpperCase().includes('JENIS'));
         break;
@@ -298,113 +285,99 @@ export default function App() {
 
       const dateStr = colIndices.date !== -1 ? row[colIndices.date] : null;
       const districtStr = colIndices.district !== -1 ? row[colIndices.district] : null;
-      let taskStr = colIndices.task !== -1 ? row[colIndices.task] : null;
-      
-      // If task is LAIN-LAIN TUGAS, check Column T for the specific task name
-      if (normalizeStr(String(taskStr)) === normalizeStr('LAIN-LAIN TUGAS') && colIndices.colT !== -1 && row.length > colIndices.colT) {
-        const colTValue = String(row[colIndices.colT]).trim();
-        if (colTValue) {
-          // Check if colTValue matches any of our known tasks
-          const matchedTask = tasksList.find(t => normalizeStr(t) === normalizeStr(colTValue));
-          if (matchedTask) {
-            taskStr = matchedTask;
-          } else {
-            // Some specific mappings based on common entries
-            const normalizedColT = normalizeStr(colTValue);
-            if (normalizedColT.includes('trafik') || normalizedColT.includes('traffik')) taskStr = 'TUGAS TRAFIK';
-            else if (normalizedColT.includes('lalulintas')) taskStr = 'KAWALAN LALULINTAS';
-            else if (normalizedColT.includes('mahkamah')) taskStr = 'TUGASAN MAHKAMAH';
-            else if (normalizedColT.includes('khas')) taskStr = 'TUGASAN KHAS';
-            else if (normalizedColT.includes('mesyuarat')) taskStr = 'MESYUARAT';
-            else if (normalizedColT.includes('jagaaman')) taskStr = 'JAGA AMAN';
-            else if (normalizedColT.includes('operasi')) taskStr = 'OPERASI';
-          }
-        }
-      }
-
       const rankStr = colIndices.rank !== -1 ? row[colIndices.rank] : null;
 
-      const taskIndex = tasksList.findIndex(t => normalizeStr(t) === normalizeStr(String(taskStr)));
-      
-      let hoursStr = colIndices.hours !== -1 ? row[colIndices.hours] : null;
-
-      const logEntry: any = { 
-        row: i + 1, 
-        raw: { dateStr, districtStr, taskStr, hoursStr, rankStr },
-        parsed: {},
-        status: 'Skipped'
-      };
-
-      if (!dateStr || !districtStr || !taskStr || !hoursStr) {
-        logEntry.reason = 'Missing required fields';
-        if (i < headerRowIndex + 6) debugLogs.push(logEntry);
-        continue;
-      }
-      
       let rowMonth = -1, rowYear = -1, rowDay = -1;
       
-      // Extract date part (ignore time)
-      const dateOnly = String(dateStr).split(' ')[0];
-      const parts = dateOnly.split(/[\/\-]/);
-      
-      if (parts.length === 3) {
-        if (parts[0].length === 4) {
-          // YYYY-MM-DD
-          rowYear = parseInt(parts[0], 10);
-          rowMonth = parseInt(parts[1], 10) - 1;
-          rowDay = parseInt(parts[2], 10);
-        } else {
-          // DD/MM/YYYY or MM/DD/YYYY
-          const p0 = parseInt(parts[0], 10);
-          const p1 = parseInt(parts[1], 10);
-          const p2 = parseInt(parts[2], 10);
-          
-          if (p1 > 12) {
-            rowMonth = p0 - 1;
-            rowDay = p1;
-            rowYear = p2;
+      if (dateStr) {
+        // Extract date part (ignore time)
+        const dateOnly = String(dateStr).split(' ')[0];
+        const parts = dateOnly.split(/[\/\-]/);
+        
+        if (parts.length === 3) {
+          if (parts[0].length === 4) {
+            // YYYY-MM-DD
+            rowYear = parseInt(parts[0], 10);
+            rowMonth = parseInt(parts[1], 10) - 1;
+            rowDay = parseInt(parts[2], 10);
           } else {
-            rowDay = p0;
-            rowMonth = p1 - 1;
-            rowYear = p2;
+            // DD/MM/YYYY or MM/DD/YYYY
+            const p0 = parseInt(parts[0], 10);
+            const p1 = parseInt(parts[1], 10);
+            const p2 = parseInt(parts[2], 10);
+            
+            if (p1 > 12) {
+              rowMonth = p0 - 1;
+              rowDay = p1;
+              rowYear = p2;
+            } else {
+              rowDay = p0;
+              rowMonth = p1 - 1;
+              rowYear = p2;
+            }
+            if (rowYear < 100) rowYear += 2000;
           }
-          if (rowYear < 100) rowYear += 2000;
-        }
-      } else {
-        const d = new Date(dateStr);
-        if (!isNaN(d.getTime())) {
-          rowYear = d.getFullYear();
-          rowMonth = d.getMonth();
-          rowDay = d.getDate();
+        } else {
+          const d = new Date(dateStr);
+          if (!isNaN(d.getTime())) {
+            rowYear = d.getFullYear();
+            rowMonth = d.getMonth();
+            rowDay = d.getDate();
+          }
         }
       }
 
-      logEntry.parsed.date = { rowYear, rowMonth, rowDay };
+      const isMonthMatch = rowMonth !== -1 && months[rowMonth] === selectedMonth;
+      const isYearMatch = rowYear !== -1 && rowYear === selectedYear;
+      const isDistrictMatch = districtStr && String(districtStr).trim().toUpperCase().includes(selectedDistrict.toUpperCase());
 
-      if (rowMonth === -1 || rowYear === -1 || rowDay === -1) {
-        logEntry.reason = 'Invalid date format';
-        if (i < headerRowIndex + 6) debugLogs.push(logEntry);
+      if (!isMonthMatch || !isYearMatch || !isDistrictMatch) {
         continue;
       }
 
-      const isMonthMatch = months[rowMonth] === selectedMonth;
-      const isYearMatch = rowYear === selectedYear;
-      const isDistrictMatch = String(districtStr).trim().toUpperCase().includes(selectedDistrict.toUpperCase());
+      // Process each task/hours pair
+      const pairsCount = Math.min(colIndices.tasks.length, colIndices.hours.length);
+      
+      for (let p = 0; p < pairsCount; p++) {
+        const taskIdx = colIndices.tasks[p];
+        const hoursIdx = colIndices.hours[p];
+        
+        let taskStr = taskIdx !== -1 && taskIdx < row.length ? row[taskIdx] : null;
+        let hoursStr = hoursIdx !== -1 && hoursIdx < row.length ? row[hoursIdx] : null;
+        
+        if (!taskStr || !hoursStr || String(taskStr).trim() === '' || String(hoursStr).trim() === '') {
+          continue; // Skip empty pairs
+        }
 
-      logEntry.parsed.matches = { isMonthMatch, isYearMatch, isDistrictMatch, selectedMonth, selectedYear, selectedDistrict };
+        // If task is LAIN-LAIN TUGAS, check Column T for the specific task name
+        if (normalizeStr(String(taskStr)) === normalizeStr('LAIN-LAIN TUGAS') && colIndices.colT !== -1 && row.length > colIndices.colT) {
+          const colTValue = String(row[colIndices.colT]).trim();
+          if (colTValue) {
+            // Check if colTValue matches any of our known tasks
+            const matchedTask = tasksList.find(t => normalizeStr(t) === normalizeStr(colTValue));
+            if (matchedTask) {
+              taskStr = matchedTask;
+            } else {
+              // Some specific mappings based on common entries
+              const normalizedColT = normalizeStr(colTValue);
+              if (normalizedColT.includes('trafik') || normalizedColT.includes('traffik')) taskStr = 'TUGAS TRAFIK';
+              else if (normalizedColT.includes('lalulintas')) taskStr = 'KAWALAN LALULINTAS';
+              else if (normalizedColT.includes('mahkamah')) taskStr = 'TUGASAN MAHKAMAH';
+              else if (normalizedColT.includes('khas')) taskStr = 'TUGASAN KHAS';
+              else if (normalizedColT.includes('mesyuarat')) taskStr = 'MESYUARAT';
+              else if (normalizedColT.includes('jagaaman')) taskStr = 'JAGA AMAN';
+              else if (normalizedColT.includes('operasi')) taskStr = 'OPERASI';
+            }
+          }
+        }
 
-      if (isMonthMatch && isYearMatch && isDistrictMatch) {
+        const taskIndex = tasksList.findIndex(t => normalizeStr(t) === normalizeStr(String(taskStr)));
+        
         if (taskIndex === -1) {
-          logEntry.reason = 'Task not found in list';
-          logEntry.parsed.normalizedTask = normalizeStr(String(taskStr));
-          if (i < headerRowIndex + 6) debugLogs.push(logEntry);
           continue;
         }
 
         const hours = parseFloat(String(hoursStr)) || 0;
-        logEntry.status = 'Success';
-        logEntry.parsed.hours = hours;
-        logEntry.parsed.taskIndex = taskIndex;
 
         // Daily
         if (rowDay >= 1 && rowDay <= 31) {
@@ -433,17 +406,11 @@ export default function App() {
             rank[taskIndex].ranks[rankIndex] = (rank[taskIndex].ranks[rankIndex] || 0) + hours;
           }
         }
-      } else {
-        logEntry.reason = 'Filter mismatch (Month/Year/District)';
-      }
-      
-      if (i < headerRowIndex + 6 || logEntry.status === 'Success') {
-         if (debugLogs.length < 20) debugLogs.push(logEntry);
       }
     }
 
     return { daily, weekly, rank, debugLogs };
-  }, [rawData, csvFields, sheetId, selectedMonth, selectedYear, selectedDistrict]);
+  }, [rawData, csvFields, selectedMonth, selectedYear, selectedDistrict]);
 
   // --- CALCULATIONS ---
   const dailyWithTotals = useMemo(() => {
@@ -557,115 +524,46 @@ export default function App() {
       }
       
       const opt = {
-        margin:       [5, 5, 5, 5],
-        filename:     `PDRM_Report_${selectedMonth}_${selectedYear}.pdf`,
+        margin:       [10, 10, 10, 10],
+        filename:     `SSPDRM_Report_${selectedMonth}_${selectedYear}.pdf`,
         image:        { type: 'jpeg', quality: 0.98 },
-        html2canvas:  { 
-          scale: 2, 
-          useCORS: true,
-          logging: false,
-          letterRendering: true,
-          width: 1400 
-        },
-        jsPDF:        { unit: 'mm', format: 'a4', orientation: 'landscape' },
-        pagebreak:    { mode: ['css', 'legacy'], before: '.html2pdf__page-break' }
+        html2canvas:  { scale: 2, windowWidth: 1400 },
+        jsPDF:        { unit: 'pt', format: [800, 500], orientation: 'landscape' },
+        pagebreak:    { mode: 'css' }
       };
 
       try {
-        // Use global html2pdf if available (from CDN), otherwise use imported one
-        const h2p = (window as any).html2pdf || html2pdf;
-        const worker = h2p().set(opt).from(element).save();
-        
-        worker.then(() => {
+        html2pdf().set(opt).from(element).save().then(() => {
           setIsGeneratingPDF(false);
           setPrintMode('CURRENT');
-        }).catch(err => {
+        }).catch((err: any) => {
           console.error("PDF generation failed:", err);
+          try {
+            const result = window.print();
+            if (result === undefined && window.self !== window.top) {
+              setShowPrintModal(true);
+            }
+          } catch (e) {
+            setShowPrintModal(true);
+          }
           setIsGeneratingPDF(false);
           setPrintMode('CURRENT');
-          alert("PDF generation failed. Opening print dialog instead.");
-          window.print();
         });
       } catch (err) {
         console.error("html2pdf initialization failed:", err);
+        try {
+          const result = window.print();
+          if (result === undefined && window.self !== window.top) {
+            setShowPrintModal(true);
+          }
+        } catch (e) {
+          setShowPrintModal(true);
+        }
         setIsGeneratingPDF(false);
         setPrintMode('CURRENT');
-        alert("PDF library failed to initialize. Opening print dialog instead.");
-        window.print();
       }
     }, 1500);
   };
-
-  const renderSettingsModal = () => (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 print:hidden">
-      <div className="bg-white rounded-xl shadow-xl max-w-2xl w-full p-6">
-        <h3 className="text-xl font-bold text-gray-900 mb-4 flex items-center gap-2">
-          <Database className="w-5 h-5 text-blue-600" />
-          Connect Google Sheets
-        </h3>
-        
-        <div className="bg-blue-50 text-blue-800 p-4 rounded-lg text-sm mb-6">
-          <p className="font-semibold mb-2">How to connect your Google Sheet:</p>
-          <ol className="list-decimal pl-5 space-y-1">
-            <li>Ensure your Google Sheet has tabs named by year (e.g., <strong>2024</strong>, <strong>2025</strong>, <strong>2026</strong>)</li>
-            <li>Ensure there is a tab named <strong>users</strong> with columns: <strong>Username</strong>, <strong>password</strong>, <strong>Role</strong>, <strong>tab</strong></li>
-            <li>Ensure each data tab has the exact headers from your form.</li>
-            <li>Click <strong>Share</strong> in the top right of your Google Sheet.</li>
-            <li>Set General Access to <strong>"Anyone with the link"</strong>.</li>
-            <li>Paste the link below and click Connect.</li>
-          </ol>
-        </div>
-
-        <div className="space-y-4 mb-6">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Google Sheet URL or ID
-            </label>
-            <input 
-              type="text" 
-              value={sheetUrl}
-              onChange={(e) => setSheetUrl(e.target.value)}
-              placeholder="https://docs.google.com/spreadsheets/d/..."
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
-            />
-          </div>
-          
-          {error && (
-            <div className="text-red-600 text-sm flex items-center gap-1">
-              <AlertCircle className="w-4 h-4" /> {error}
-            </div>
-          )}
-        </div>
-
-        <div className="flex justify-between items-center">
-          {sheetId ? (
-            <button 
-              onClick={handleDisconnect}
-              className="px-4 py-2 text-red-600 hover:bg-red-50 rounded-lg font-medium transition-colors"
-            >
-              Disconnect
-            </button>
-          ) : <div></div>}
-          
-          <div className="flex gap-2">
-            <button 
-              onClick={() => setShowSettingsModal(false)}
-              className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg font-medium transition-colors"
-            >
-              Cancel
-            </button>
-            <button 
-              onClick={handleSaveSettings}
-              disabled={!sheetUrl}
-              className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition-colors disabled:opacity-50"
-            >
-              Connect & Load
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
 
   if (!isAuthenticated) {
     return (
@@ -676,18 +574,13 @@ export default function App() {
               <Users className="w-12 h-12 text-white" />
             </div>
           </div>
-          <h1 className="text-2xl font-bold text-center text-gray-800 mb-6">PDRM Report System</h1>
+          <h1 className="text-2xl font-bold text-center text-gray-800 mb-6">SSPDRM Report System</h1>
           
-          {!sheetId ? (
+          {(!GOOGLE_SHEET_ID || GOOGLE_SHEET_ID === "YOUR_GOOGLE_SHEET_ID_HERE") ? (
             <div className="text-center">
-              <p className="text-gray-600 mb-4">Please connect your Google Sheet to continue.</p>
-              <button
-                onClick={() => setShowSettingsModal(true)}
-                className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline w-full flex items-center justify-center gap-2"
-              >
-                <Database className="w-4 h-4" />
-                Connect Data Source
-              </button>
+              <p className="text-red-600 font-medium mb-4">
+                Please configure your GOOGLE_SHEET_ID in the code to continue.
+              </p>
             </div>
           ) : (
             <form onSubmit={handleLogin}>
@@ -729,18 +622,10 @@ export default function App() {
                   {isLoggingIn ? <RefreshCw className="w-4 h-4 animate-spin" /> : null}
                   {isLoggingIn ? 'Signing In...' : 'Sign In'}
                 </button>
-                <button
-                  type="button"
-                  onClick={() => setShowSettingsModal(true)}
-                  className="text-sm text-gray-500 hover:text-gray-700 flex items-center justify-center gap-1"
-                >
-                  <Database className="w-3 h-3" /> Change Data Source
-                </button>
               </div>
             </form>
           )}
         </div>
-        {showSettingsModal && renderSettingsModal()}
       </div>
     );
   }
@@ -800,7 +685,7 @@ export default function App() {
       <thead>
         <tr>
           <th className="border border-black p-2 w-12" rowSpan={2}>BIL</th>
-          <th className="border border-black p-2 text-left min-w-[250px]" rowSpan={2}>PROGRAM / AKTIVITI</th>
+          <th className="border border-black p-2 text-left w-48 min-w-[150px]" rowSpan={2}>PROGRAM / AKTIVITI</th>
           <th className="border border-black p-2" colSpan={5}>DALAM BULAN TERSEBUT</th>
           <th className="border border-black p-2 w-32" rowSpan={2}>JUMLAH JAM<br/>KESELURUHAN</th>
         </tr>
@@ -861,7 +746,7 @@ export default function App() {
         </tr>
         <tr className="bg-white">
           <th className="border border-black p-2 w-12" rowSpan={2}>BIL</th>
-          <th className="border border-black p-2 text-left min-w-[200px]" rowSpan={2}>JENIS TUGAS</th>
+          <th className="border border-black p-2 text-left w-48 min-w-[150px]" rowSpan={2}>JENIS TUGAS</th>
           <th className="border border-black p-1 w-16">ASP/SP</th>
           <th className="border border-black p-1 w-16">INSP/SP</th>
           <th className="border border-black p-1 w-16">SI/SP</th>
@@ -927,7 +812,7 @@ export default function App() {
               <p className="text-sm text-gray-500">
                 Select parameters and view type to generate the report.
               </p>
-              {sheetId ? (
+              {(GOOGLE_SHEET_ID && GOOGLE_SHEET_ID !== "YOUR_GOOGLE_SHEET_ID_HERE") ? (
                 <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-green-100 text-green-700 text-xs font-medium">
                   <CheckCircle2 className="w-3 h-3" /> Connected to Sheets
                 </span>
@@ -964,21 +849,9 @@ export default function App() {
               {years.map(y => <option key={y} value={y}>{y}</option>)}
             </select>
 
-            <button 
-              onClick={() => setShowSettingsModal(true)}
-              className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors shadow-sm ${
-                sheetId 
-                  ? 'bg-white border border-gray-300 hover:bg-gray-50 text-gray-700' 
-                  : 'bg-blue-600 hover:bg-blue-700 text-white border border-transparent'
-              }`}
-            >
-              <Database className="w-4 h-4" />
-              {sheetId ? 'Sheet Settings' : 'Connect Google Sheet'}
-            </button>
-
-            {sheetId && (
+            {(GOOGLE_SHEET_ID && GOOGLE_SHEET_ID !== "YOUR_GOOGLE_SHEET_ID_HERE") && (
               <button 
-                onClick={() => fetchSheetData(sheetId, selectedYear)}
+                onClick={() => fetchSheetData(GOOGLE_SHEET_ID, selectedYear)}
                 disabled={isLoading}
                 className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 rounded-lg text-sm font-medium transition-colors shadow-sm disabled:opacity-50"
               >
@@ -1062,30 +935,22 @@ export default function App() {
       </div>
 
       {/* Printable Report Area */}
-      {!sheetId && (
+      {(!GOOGLE_SHEET_ID || GOOGLE_SHEET_ID === "YOUR_GOOGLE_SHEET_ID_HERE") && (
         <div className="max-w-7xl mx-auto mb-6 bg-amber-50 border border-amber-200 rounded-xl p-6 text-center print:hidden shadow-sm">
           <Database className="w-10 h-10 text-amber-500 mx-auto mb-3" />
           <h2 className="text-lg font-bold text-amber-900 mb-2">Currently showing sample data</h2>
           <p className="text-amber-700 mb-4 max-w-2xl mx-auto">
-            Connect your Google Sheet to view and manage your actual PDRM volunteer data. 
-            Click the button below to link your spreadsheet.
+            Please configure your GOOGLE_SHEET_ID in the code to view and manage your actual SSPDRM volunteer data.
           </p>
-          <button 
-            onClick={() => setShowSettingsModal(true)}
-            className="inline-flex items-center gap-2 px-6 py-2.5 bg-amber-600 hover:bg-amber-700 text-white rounded-lg font-medium transition-colors shadow-sm"
-          >
-            <Database className="w-4 h-4" />
-            Connect Google Sheet Now
-          </button>
         </div>
       )}
 
-      <div id="report-container" className="max-w-[1400px] mx-auto bg-white print:max-w-none print:shadow-none shadow-lg border-4 border-blue-600 print:border-blue-600 p-4 sm:p-8 overflow-x-auto">
+      <div id="report-container" className={`max-w-[1400px] mx-auto bg-white print:max-w-none print:shadow-none shadow-lg border-4 border-blue-600 print:border-blue-600 p-4 sm:p-8 overflow-x-auto ${printMode === 'ALL' ? 'pdf-mode' : ''}`}>
         
         {/* Data Tables */}
         <div className="w-full overflow-x-auto">
           {(printMode === 'ALL' || activeTab === 'DAILY') && (
-            <div className={printMode === 'ALL' ? 'print:break-after-page html2pdf__page-break mb-12' : ''} style={{ pageBreakAfter: printMode === 'ALL' ? 'always' : 'auto' }}>
+            <div className={`print-page-container ${printMode === 'ALL' ? 'html2pdf__page-break' : ''}`}>
               <div className="text-center mb-6">
                 <h2 className="text-xl sm:text-2xl font-bold uppercase tracking-wide text-gray-900">
                   SUKARELAWAN POLIS DIRAJA MALAYSIA KONTINJEN MELAKA
@@ -1105,7 +970,7 @@ export default function App() {
           )}
 
           {(printMode === 'ALL' || activeTab === 'WEEKLY') && (
-            <div className={printMode === 'ALL' ? 'print:break-after-page html2pdf__page-break mb-12' : ''} style={{ pageBreakAfter: printMode === 'ALL' ? 'always' : 'auto' }}>
+            <div className={`print-page-container ${printMode === 'ALL' ? 'html2pdf__page-break' : ''}`}>
               <div className="text-center mb-6">
                 <h2 className="text-xl sm:text-2xl font-bold uppercase tracking-wide text-gray-900">
                   SUKARELAWAN POLIS DIRAJA MALAYSIA KONTINJEN MELAKA
@@ -1125,7 +990,7 @@ export default function App() {
           )}
 
           {(printMode === 'ALL' || activeTab === 'RANK') && (
-            <div>
+            <div className={`print-page-container ${printMode === 'ALL' ? 'html2pdf__page-break' : ''}`}>
               {printMode === 'ALL' && (
                 <div className="text-center mb-6">
                   <h2 className="text-xl sm:text-2xl font-bold uppercase tracking-wide text-gray-900">
@@ -1139,51 +1004,6 @@ export default function App() {
         </div>
         
       </div>
-
-      {/* Debug Area */}
-      {sheetId && (
-        <div className="max-w-7xl mx-auto mt-6 bg-white p-6 rounded-xl shadow-sm border border-gray-200 print:hidden">
-          <div className="flex justify-between items-center mb-4">
-            <h3 className="text-lg font-bold text-gray-900">Connection Diagnostics</h3>
-            <button 
-              onClick={() => setShowDebug(!showDebug)}
-              className="px-3 py-1 text-sm bg-gray-100 hover:bg-gray-200 rounded-md transition-colors"
-            >
-              {showDebug ? 'Hide Details' : 'Show Details'}
-            </button>
-          </div>
-          
-          <div className="text-sm text-gray-600 mb-4">
-            <p><strong>Raw Rows Fetched:</strong> {rawData.length}</p>
-            <p><strong>Rows Successfully Processed:</strong> {processedData.debugLogs.filter(l => l.status === 'Success').length}</p>
-            <p><strong>Raw CSV Length:</strong> {rawCsvText.length} characters</p>
-          </div>
-
-          {showDebug && (
-            <div className="space-y-4">
-              <div className="bg-gray-900 text-green-400 p-4 rounded-lg overflow-x-auto text-xs font-mono">
-                <h4 className="text-white mb-2 font-bold">First 500 chars of CSV:</h4>
-                <pre>{rawCsvText.substring(0, 500) || 'No CSV data'}</pre>
-              </div>
-              <div className="bg-gray-900 text-green-400 p-4 rounded-lg overflow-x-auto text-xs font-mono">
-                <h4 className="text-white mb-2 font-bold">Processing Logs:</h4>
-                <pre>{JSON.stringify(processedData.debugLogs, null, 2)}</pre>
-              </div>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Debug Logs */}
-      {processedData.debugLogs && processedData.debugLogs.length > 0 && (
-        <div className="max-w-7xl mx-auto mt-8 bg-gray-900 text-green-400 p-6 rounded-xl font-mono text-xs overflow-x-auto print:hidden">
-          <h3 className="text-white font-bold mb-4 text-sm">Debug Logs (First 20 rows processed)</h3>
-          <pre>{JSON.stringify(processedData.debugLogs, null, 2)}</pre>
-        </div>
-      )}
-
-      {/* Settings Modal */}
-      {showSettingsModal && renderSettingsModal()}
 
       {/* Print Modal */}
       {showPrintModal && (
