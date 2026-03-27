@@ -108,22 +108,14 @@ export default function App() {
       }
       
       if (savedRole && savedRole.toLowerCase() !== 'admin') {
-        let initialTab: TabType = 'PERSONAL';
         const tabStr = (savedTab || '').toUpperCase();
-        const tabParts = tabStr.split(/[,/]/).map(t => t.trim());
+        let initialTab: TabType = 'PERSONAL';
         
-        // Find the first valid tab code in the saved string
-        const firstValid = tabParts.find(t => ['T1', 'T2', 'T3', 'T4'].includes(t));
-        
-        if (firstValid === 'T1') initialTab = 'WEEKLY';
-        else if (firstValid === 'T2') initialTab = 'DAILY';
-        else if (firstValid === 'T3') initialTab = 'RANK';
-        else if (firstValid === 'T4') initialTab = 'PERSONAL';
-        // Fallback to includes
-        else if (tabStr.includes('T1')) initialTab = 'WEEKLY';
-        else if (tabStr.includes('T2')) initialTab = 'DAILY';
-        else if (tabStr.includes('T3')) initialTab = 'RANK';
-        else if (tabStr.includes('T4')) initialTab = 'PERSONAL';
+        if (tabStr.includes('T1') || tabStr.includes('WEEKLY')) initialTab = 'WEEKLY';
+        else if (tabStr.includes('T2') || tabStr.includes('DAILY')) initialTab = 'DAILY';
+        else if (tabStr.includes('T3') || tabStr.includes('RANK')) initialTab = 'RANK';
+        else if (tabStr.includes('T4') || tabStr.includes('PERSONAL')) initialTab = 'PERSONAL';
+        else if (!tabStr) initialTab = 'PERSONAL';
         
         setActiveTab(initialTab);
         if (savedName) setSelectedPerson(savedName);
@@ -173,11 +165,22 @@ export default function App() {
           
           if (user) {
             setIsAuthenticated(true);
-            const role = (user.Role || user.role || user.ROLE || '').toString().trim();
-            // Fallback to Username if Name column doesn't exist
-            const name = (user.Name || user.name || user.NAME || user.Username || user.username || '').toString().trim().toUpperCase();
-            const defaultTab = (user.tab || user.Tab || user.TAB || '').toString().trim().toUpperCase();
-            const district = (user.District || user.district || user.DISTRICT || '').toString().trim().toUpperCase();
+            
+            const getVal = (obj: any, targetKeys: string[]) => {
+              const normalizedTargets = targetKeys.map(k => k.toLowerCase().replace(/[^a-z0-9]/g, ''));
+              for (const key in obj) {
+                const normalizedKey = key.toLowerCase().replace(/[^a-z0-9]/g, '');
+                if (normalizedTargets.includes(normalizedKey)) {
+                  return obj[key];
+                }
+              }
+              return '';
+            };
+
+            const role = getVal(user, ['Role', 'Peranan']).toString().trim();
+            const name = getVal(user, ['Name', 'Nama', 'Username']).toString().trim().toUpperCase();
+            const defaultTab = getVal(user, ['Tab', 'TabAccess', 'Capaian', 'Tab Access']).toString().trim().toUpperCase();
+            const district = getVal(user, ['District', 'Daerah', 'Distric']).toString().trim().toUpperCase();
             
             setUserRole(role);
             setLoggedInName(name);
@@ -192,21 +195,15 @@ export default function App() {
             
             if (role.toLowerCase() !== 'admin') {
               if (district) setSelectedDistrict(district);
+              
+              const normalizedTab = defaultTab.toUpperCase();
               let initialTab: TabType = 'PERSONAL';
-              const tabParts = defaultTab.split(/[,/]/).map(t => t.trim().toUpperCase());
               
-              // Find the first valid tab code in the user's string
-              const firstValid = tabParts.find(t => ['T1', 'T2', 'T3', 'T4'].includes(t));
-              
-              if (firstValid === 'T1') initialTab = 'WEEKLY';
-              else if (firstValid === 'T2') initialTab = 'DAILY';
-              else if (firstValid === 'T3') initialTab = 'RANK';
-              else if (firstValid === 'T4') initialTab = 'PERSONAL';
-              // If no valid code found but string is not empty, check for includes as fallback
-              else if (defaultTab.includes('T1')) initialTab = 'WEEKLY';
-              else if (defaultTab.includes('T2')) initialTab = 'DAILY';
-              else if (defaultTab.includes('T3')) initialTab = 'RANK';
-              else if (defaultTab.includes('T4')) initialTab = 'PERSONAL';
+              if (normalizedTab.includes('T1') || normalizedTab.includes('WEEKLY')) initialTab = 'WEEKLY';
+              else if (normalizedTab.includes('T2') || normalizedTab.includes('DAILY')) initialTab = 'DAILY';
+              else if (normalizedTab.includes('T3') || normalizedTab.includes('RANK')) initialTab = 'RANK';
+              else if (normalizedTab.includes('T4') || normalizedTab.includes('PERSONAL')) initialTab = 'PERSONAL';
+              else if (!normalizedTab) initialTab = 'PERSONAL';
               
               setActiveTab(initialTab);
               if (name) setSelectedPerson(name);
@@ -306,7 +303,7 @@ export default function App() {
   const processedData = useMemo(() => {
     if (!GOOGLE_SHEET_ID || GOOGLE_SHEET_ID === "YOUR_GOOGLE_SHEET_ID_HERE") {
       // Fallback to mock data only if no sheet is connected
-      return { daily: mockDailyData, weekly: mockWeeklyData, rank: mockRankData, debugLogs: [] };
+      return { daily: mockDailyData, weekly: mockWeeklyData, rank: mockRankData, personal: [], debugLogs: [] };
     }
 
     // Initialize empty structures
@@ -317,7 +314,7 @@ export default function App() {
     const debugLogs: any[] = [];
 
     if (!rawData || rawData.length === 0) {
-      return { daily, weekly, rank, debugLogs };
+      return { daily, weekly, rank, personal: [], debugLogs };
     }
 
     const normalizeStr = (s: string) => (s || '').replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
@@ -362,7 +359,7 @@ export default function App() {
 
     if (headerRowIndex === -1) {
       debugLogs.push({ reason: 'Could not find header row with TARIKH and DAERAH' });
-      return { daily, weekly, rank, debugLogs };
+      return { daily, weekly, rank, personal: [], debugLogs };
     }
 
     // Process data rows
@@ -426,30 +423,28 @@ export default function App() {
 
       const totalHours = parseFloat(String(hoursStr)) || 0;
 
-      // Extract person name
-      let personName = '';
+      // Extract person names (multiple people can be in one row)
       const nameIndices = [3, 5, 7, 9];
       nameIndices.forEach(idx => {
         if (idx < row.length && row[idx] && String(row[idx]).trim() !== '') {
-          personName = String(row[idx]).trim().toUpperCase();
+          const personName = String(row[idx]).trim().toUpperCase();
+          
+          if (!personalMap.has(personName)) {
+            personalMap.set(personName, {
+              name: personName,
+              rank: String(rankStr || '').toUpperCase().trim(),
+              months: Array(12).fill(0),
+              total: 0
+            });
+          }
+          
+          const pData = personalMap.get(personName)!;
+          if (rowMonth >= 0 && rowMonth < 12) {
+            pData.months[rowMonth] += totalHours;
+            pData.total += totalHours;
+          }
         }
       });
-
-      if (personName) {
-        if (!personalMap.has(personName)) {
-          personalMap.set(personName, {
-            name: personName,
-            rank: String(rankStr || '').toUpperCase().trim(),
-            months: Array(12).fill(0),
-            total: 0
-          });
-        }
-        const pData = personalMap.get(personName)!;
-        if (rowMonth >= 0 && rowMonth < 12) {
-          pData.months[rowMonth] += totalHours;
-          pData.total += totalHours;
-        }
-      }
 
       const isMonthMatch = rowMonth !== -1 && months[rowMonth] === selectedMonth;
       if (!isMonthMatch) {
@@ -912,10 +907,20 @@ export default function App() {
     
     let displayedPersonnel = processedData.personal;
     
-    if (userRole.toLowerCase() !== 'admin') {
-      displayedPersonnel = processedData.personal.filter(p => p.name === loggedInName);
-    } else if (selectedPerson !== 'ALL') {
+    if (selectedPerson !== 'ALL') {
       displayedPersonnel = processedData.personal.filter(p => p.name === selectedPerson);
+      
+      // If no exact match and it's the logged in user, try relaxed match (for initial login state)
+      if (displayedPersonnel.length === 0 && selectedPerson === loggedInName) {
+        displayedPersonnel = processedData.personal.filter(p => 
+          p.name.includes(loggedInName) || loggedInName.includes(p.name)
+        );
+      }
+    } else if (userRole.toLowerCase() !== 'admin' && !userTab.toUpperCase().includes('ADMIN')) {
+      // If not admin and 'ALL' is selected, we might still want to default to themselves 
+      // UNLESS they explicitly chose 'ALL' and we want to allow it.
+      // The user said "the data for 'semua anggota' is not showing", so we allow it.
+      // No extra filtering here means it shows everyone in processedData.personal (which is district-filtered).
     }
 
     const monthTotals = Array(12).fill(0);
@@ -947,6 +952,12 @@ export default function App() {
                 <div>: <span className="ml-2 font-normal"></span></div>
               </div>
             </div>
+          </div>
+        )}
+
+        {displayedPersonnel.length === 0 && (userRole.toLowerCase() !== 'admin' || selectedPerson !== 'ALL') && (
+          <div className="p-8 text-center text-gray-500 bg-gray-50 rounded-lg border border-dashed border-gray-300 mb-6">
+            Tiada data tugasan dijumpai untuk {userRole.toLowerCase() !== 'admin' ? 'anda' : 'anggota ini'} pada tahun {selectedYear} di daerah {selectedDistrict}.
           </div>
         )}
         
@@ -1062,13 +1073,10 @@ export default function App() {
               <select 
                 value={selectedPerson}
                 onChange={(e) => setSelectedPerson(e.target.value)}
-                disabled={userRole.toLowerCase() !== 'admin'}
-                className="px-3 py-2 bg-gray-50 border border-gray-300 rounded-lg text-sm font-medium focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none max-w-[200px] truncate disabled:opacity-75 disabled:bg-gray-100"
+                className="px-3 py-2 bg-gray-50 border border-gray-300 rounded-lg text-sm font-medium focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none max-w-[200px] truncate"
               >
-                {userRole.toLowerCase() === 'admin' && <option value="ALL">SEMUA ANGGOTA</option>}
-                {processedData.personal
-                  .filter(p => userRole.toLowerCase() === 'admin' || p.name === loggedInName)
-                  .map(p => (
+                <option value="ALL">SEMUA ANGGOTA</option>
+                {processedData.personal.map(p => (
                   <option key={p.name} value={p.name}>{p.name}</option>
                 ))}
               </select>
@@ -1123,20 +1131,7 @@ export default function App() {
 
         {/* Tabs */}
         <div className="flex gap-2 mt-6 border-b border-gray-200 pb-px">
-          {(userRole.toLowerCase() === 'admin' || userTab.toUpperCase().includes('T2')) && (
-            <button
-              onClick={() => setActiveTab('DAILY')}
-              className={`flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-t-lg transition-colors ${
-                activeTab === 'DAILY' 
-                  ? 'bg-blue-50 text-blue-700 border-b-2 border-blue-700' 
-                  : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
-              }`}
-            >
-              <CalendarDays className="w-4 h-4" />
-              Bulanan (Monthly)
-            </button>
-          )}
-          {(userRole.toLowerCase() === 'admin' || userTab.toUpperCase().includes('T1')) && (
+          {(userRole.toLowerCase() === 'admin' || userTab.toUpperCase().includes('T1') || userTab.toUpperCase().includes('WEEKLY') || !userTab || userTab.trim() === '') && (
             <button
               onClick={() => setActiveTab('WEEKLY')}
               className={`flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-t-lg transition-colors ${
@@ -1149,7 +1144,20 @@ export default function App() {
               Mingguan (Weekly)
             </button>
           )}
-          {(userRole.toLowerCase() === 'admin' || userTab.toUpperCase().includes('T3')) && (
+          {(userRole.toLowerCase() === 'admin' || userTab.toUpperCase().includes('T2') || userTab.toUpperCase().includes('DAILY') || !userTab || userTab.trim() === '') && (
+            <button
+              onClick={() => setActiveTab('DAILY')}
+              className={`flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-t-lg transition-colors ${
+                activeTab === 'DAILY' 
+                  ? 'bg-blue-50 text-blue-700 border-b-2 border-blue-700' 
+                  : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
+              }`}
+            >
+              <CalendarDays className="w-4 h-4" />
+              Bulanan (Monthly)
+            </button>
+          )}
+          {(userRole.toLowerCase() === 'admin' || userTab.toUpperCase().includes('T3') || userTab.toUpperCase().includes('RANK') || !userTab || userTab.trim() === '') && (
             <button
               onClick={() => setActiveTab('RANK')}
               className={`flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-t-lg transition-colors ${
@@ -1162,7 +1170,7 @@ export default function App() {
               Pangkat (Rank)
             </button>
           )}
-          {(userRole.toLowerCase() === 'admin' || userTab.toUpperCase().includes('T4') || !userTab) && (
+          {(userRole.toLowerCase() === 'admin' || userTab.toUpperCase().includes('T4') || userTab.toUpperCase().includes('PERSONAL') || !userTab || userTab.trim() === '') && (
             <button
               onClick={() => setActiveTab('PERSONAL')}
               className={`flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-t-lg transition-colors ${
