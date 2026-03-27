@@ -12,22 +12,22 @@
 }
 
 .pdf-mode table {
-  font-size: 7px !important;
+  font-size: 9px !important;
   width: 100% !important;
-  table-layout: fixed !important;
-  break-inside: avoid !important;
+  table-layout: auto !important;
+  border-collapse: collapse !important;
 }
 
 .pdf-mode th, .pdf-mode td {
-  padding: 1px !important;
+  padding: 4px 2px !important;
   word-wrap: break-word !important;
-  overflow: hidden !important;
-  line-height: 1 !important;
+  line-height: 1.2 !important;
+  border: 1px solid black !important;
 }
 
 .pdf-mode h2 {
-  font-size: 11px !important;
-  margin-bottom: 2px !important;
+  font-size: 16px !important;
+  margin-bottom: 8px !important;
 }
 
 .pdf-mode .print-page-container {
@@ -35,51 +35,59 @@
   page-break-inside: avoid !important;
   break-inside: avoid !important;
   width: 100% !important;
+  padding-top: 10px !important;
 }
 
 @media print {
   @page {
-    size: 800pt 500pt;
-    margin: 5pt;
+    size: A4 landscape;
+    margin: 1cm;
   }
   
   body {
     -webkit-print-color-adjust: exact;
     print-color-adjust: exact;
     background-color: white !important;
+    margin: 0;
+    padding: 0;
   }
   
   .print\:hidden {
     display: none !important;
   }
 
-  .html2pdf__page-break {
-    page-break-after: always !important;
-    break-after: page !important;
+  /* Force tables to fill the page width */
+  table {
+    font-size: 9px !important;
+    width: 100% !important;
+    table-layout: auto !important;
+    border-collapse: collapse !important;
+    break-inside: auto !important;
   }
 
-  /* Force tables to fit on one page vertically if possible */
-  table {
-    font-size: 7px !important;
-    width: 100% !important;
-    table-layout: fixed !important;
+  tr {
     break-inside: avoid !important;
+    break-after: auto !important;
   }
 
   th, td {
-    padding: 1px !important;
+    padding: 4px 2px !important;
     word-wrap: break-word !important;
-    overflow: hidden !important;
-    line-height: 1 !important;
+    line-height: 1.2 !important;
+    border: 1px solid black !important;
   }
 
   h2 {
-    font-size: 11px !important;
-    margin-bottom: 2px !important;
+    font-size: 16px !important;
+    margin-bottom: 8px !important;
+  }
+
+  .text-sm, .text-base {
+    font-size: 12px !important;
   }
 
   .mb-6, .mb-12 {
-    margin-bottom: 2px !important;
+    margin-bottom: 12px !important;
   }
 
   .p-4, .p-8, .sm\:p-8 {
@@ -88,14 +96,13 @@
 
   /* Specific scaling for the container to ensure it fits */
   #report-container {
-    width: 1400px !important;
-    max-width: 1400px !important;
+    width: 100% !important;
+    max-width: none !important;
     border: none !important;
     box-shadow: none !important;
     margin: 0 !important;
     padding: 0 !important;
-    transform: scale(0.65);
-    transform-origin: top left;
+    transform: none !important;
     overflow: visible !important;
   }
 
@@ -104,8 +111,12 @@
     page-break-inside: avoid !important;
     break-inside: avoid !important;
     width: 100% !important;
-    height: auto !important;
-    max-height: none !important;
-    overflow: hidden !important;
+    margin-bottom: 0 !important;
+    padding-top: 10px !important;
+  }
+
+  /* Hide the blue border in print */
+  .print\:border-blue-600 {
+    border: none !important;
   }
 }

@@ -592,8 +592,8 @@ export default function App() {
     }
   };
 
-  const handlePrintAll = () => {
-    setPrintMode('ALL');
+  const handlePrintCurrent = () => {
+    setPrintMode('CURRENT');
     setTimeout(() => {
       try {
         const result = window.print();
@@ -606,67 +606,65 @@ export default function App() {
         console.error("Print failed:", e);
         setShowPrintModal(true);
       }
-      setTimeout(() => setPrintMode('CURRENT'), 1000);
     }, 100);
   };
 
-  const handleSavePDF = () => {
+  const handleSaveCurrentPDF = () => {
     if (isGeneratingPDF) return;
     
     setIsGeneratingPDF(true);
-    setPrintMode('ALL');
+    setPrintMode('CURRENT');
     
-    // Give time for the UI to update to 'ALL' mode and for styles to apply
+    // Give more time for the UI to settle
     setTimeout(() => {
-      window.scrollTo(0, 0); // Important for html2canvas
+      window.scrollTo(0, 0);
       const element = document.getElementById('report-container');
+      
       if (!element) {
         setIsGeneratingPDF(false);
-        setPrintMode('CURRENT');
         alert("Report container not found. Please try again.");
         return;
       }
       
-      const opt = {
-        margin:       [10, 10, 10, 10] as [number, number, number, number],
-        filename:     `SSPDRM_Report_${selectedMonth}_${selectedYear}.pdf`,
-        image:        { type: 'jpeg' as const, quality: 0.98 },
-        html2canvas:  { scale: 2, windowWidth: 1400 },
-        jsPDF:        { unit: 'pt' as const, format: [800, 500] as [number, number], orientation: 'landscape' as const },
-        pagebreak:    { mode: 'css' }
+      // Temporarily adjust element for better capture
+      const originalStyle = element.style.overflow;
+      element.style.overflow = 'visible';
+      
+      const opt: any = {
+        margin:       5,
+        filename:     `SSPDRM_${activeTab}_Report_${selectedMonth}_${selectedYear}.pdf`,
+        image:        { type: 'jpeg', quality: 0.95 },
+        html2canvas:  { 
+          scale: 1, // Lower scale for better reliability with large reports
+          useCORS: true,
+          logging: false,
+          letterRendering: true,
+          allowTaint: true,
+          width: element.scrollWidth, // Capture full width
+          windowWidth: element.scrollWidth > 1400 ? element.scrollWidth : 1400
+        },
+        jsPDF:        { unit: 'mm', format: 'a4', orientation: 'landscape', compress: true },
+        pagebreak:    { mode: ['css', 'legacy'] }
       };
 
       try {
+        // Correct order: .set(opt).from(element).save()
         html2pdf().set(opt).from(element).save().then(() => {
+          element.style.overflow = originalStyle;
           setIsGeneratingPDF(false);
-          setPrintMode('CURRENT');
         }).catch((err: any) => {
-          console.error("PDF generation failed:", err);
-          try {
-            const result = window.print();
-            if (result === undefined && window.self !== window.top) {
-              setShowPrintModal(true);
-            }
-          } catch (e) {
-            setShowPrintModal(true);
-          }
+          console.error("PDF generation error:", err);
+          element.style.overflow = originalStyle;
           setIsGeneratingPDF(false);
-          setPrintMode('CURRENT');
+          alert("PDF generation failed. This usually happens if the report is too large for the browser's memory. \n\nSolution: Click 'Print Current' and choose 'Save as PDF' in the print window.");
         });
       } catch (err) {
-        console.error("html2pdf initialization failed:", err);
-        try {
-          const result = window.print();
-          if (result === undefined && window.self !== window.top) {
-            setShowPrintModal(true);
-          }
-        } catch (e) {
-          setShowPrintModal(true);
-        }
+        console.error("html2pdf initialization error:", err);
+        element.style.overflow = originalStyle;
         setIsGeneratingPDF(false);
-        setPrintMode('CURRENT');
+        alert("Could not start PDF generation. Please use the 'Print Current' button instead.");
       }
-    }, 1500);
+    }, 1000);
   };
 
   if (!isAuthenticated) {
@@ -934,27 +932,6 @@ export default function App() {
 
     return (
       <div className="w-full">
-        {(userRole.toLowerCase() !== 'admin' || selectedPerson !== 'ALL') && displayedPersonnel.length > 0 && (
-          <div className="flex justify-between text-sm sm:text-base font-bold mb-6 text-left border-b border-black pb-4">
-            <div>
-              <div className="flex mb-2">
-                <div className="w-32">NAMA</div>
-                <div>: <span className="ml-2 font-normal">{displayedPersonnel[0].name}</span></div>
-              </div>
-              <div className="flex">
-                <div className="w-32">PANGKAT / NO</div>
-                <div>: <span className="ml-2 font-normal">{displayedPersonnel[0].rank}</span></div>
-              </div>
-            </div>
-            <div>
-              <div className="flex">
-                <div className="w-48">NO. KAD PENGENALAN</div>
-                <div>: <span className="ml-2 font-normal"></span></div>
-              </div>
-            </div>
-          </div>
-        )}
-
         {displayedPersonnel.length === 0 && (userRole.toLowerCase() !== 'admin' || selectedPerson !== 'ALL') && (
           <div className="p-8 text-center text-gray-500 bg-gray-50 rounded-lg border border-dashed border-gray-300 mb-6">
             Tiada data tugasan dijumpai untuk {userRole.toLowerCase() !== 'admin' ? 'anda' : 'anggota ini'} pada tahun {selectedYear} di daerah {selectedDistrict}.
@@ -965,8 +942,9 @@ export default function App() {
           <thead>
             <tr className="bg-gray-100 print:bg-transparent">
               <th className="border border-black p-2 w-10">BIL</th>
+              <th className="border border-black p-2 w-32">NO. BADAN</th>
+              <th className="border border-black p-2 w-24">PANGKAT</th>
               <th className="border border-black p-2 text-left min-w-[200px]">NAMA</th>
-              <th className="border border-black p-2 w-32">NO. PANGKAT</th>
               {monthNames.map(m => (
                 <th key={m} className="border border-black p-1 w-12">{m}</th>
               ))}
@@ -974,25 +952,51 @@ export default function App() {
             </tr>
           </thead>
           <tbody>
-            {displayedPersonnel.map((person, idx) => (
-              <tr key={idx} className="even:bg-gray-50/50 print:even:bg-transparent">
-                <td className="border border-black p-1">{idx + 1}</td>
-                <td className="border border-black p-1 text-left pl-2">{person.name}</td>
-                <td className="border border-black p-1">{person.rank}</td>
-                {person.months.map((hours: number, i: number) => (
-                  <td key={i} className="border border-black p-1">{hours || 0}</td>
-                ))}
-                <td className="border border-black p-1 font-bold bg-gray-50 print:bg-transparent">{person.total}</td>
-              </tr>
-            ))}
+            {displayedPersonnel.map((person, idx) => {
+              // Extract NO. BADAN from Name (e.g., "12345 JOHN DOE" or "JOHN DOE 12345")
+              const nameMatch = person.name.match(/\d+/);
+              const noBadanFromName = nameMatch ? nameMatch[0] : '';
+              const cleanName = person.name.replace(noBadanFromName, '').replace(/\s+/g, ' ').trim();
+              
+              // Extract PANGKAT from Rank field
+              let pangkat = person.rank;
+              let noBadanFromRank = '';
+              
+              const rankParts = person.rank.split(' ');
+              if (rankParts.length > 1) {
+                pangkat = rankParts[0];
+                noBadanFromRank = rankParts.slice(1).join(' ');
+              } else if (rankParts.length === 1) {
+                if (/^\d+$/.test(rankParts[0])) {
+                  noBadanFromRank = rankParts[0];
+                  pangkat = ''; // Rank is just a number?
+                }
+              }
+
+              // Final decision: Use number from name if available, otherwise from rank
+              const finalNoBadan = noBadanFromName || noBadanFromRank;
+
+              return (
+                <tr key={idx} className="even:bg-gray-50/50 print:even:bg-transparent">
+                  <td className="border border-black p-1">{idx + 1}</td>
+                  <td className="border border-black p-1">{finalNoBadan}</td>
+                  <td className="border border-black p-1">{pangkat}</td>
+                  <td className="border border-black p-1 text-left pl-2">{cleanName}</td>
+                  {person.months.map((hours: number, i: number) => (
+                    <td key={i} className="border border-black p-1">{hours || 0}</td>
+                  ))}
+                  <td className="border border-black p-1 font-bold bg-gray-50 print:bg-transparent">{person.total}</td>
+                </tr>
+              );
+            })}
             {displayedPersonnel.length === 0 && (
               <tr>
-                <td colSpan={16} className="border border-black p-4 text-gray-500">Tiada rekod anggota dijumpai untuk tahun {selectedYear}</td>
+                <td colSpan={17} className="border border-black p-4 text-gray-500">Tiada rekod anggota dijumpai untuk tahun {selectedYear}</td>
               </tr>
             )}
             {displayedPersonnel.length > 0 && (
               <tr className="bg-gray-50 print:bg-transparent font-bold">
-                <td className="border border-black p-2 text-right pr-4" colSpan={3}>JUMLAH KESELURUHAN</td>
+                <td className="border border-black p-2 text-right pr-4" colSpan={4}>JUMLAH KESELURUHAN</td>
                 {monthTotals.map((total, i) => (
                   <td key={i} className="border border-black p-1 text-blue-600 print:text-black">{total || 0}</td>
                 ))}
@@ -1103,14 +1107,14 @@ export default function App() {
             <div className="flex flex-col items-end gap-1">
               <div className="flex gap-2">
                 <button 
-                  onClick={handlePrintAll}
+                  onClick={handlePrintCurrent}
                   className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium transition-colors shadow-sm"
                 >
                   <Printer className="w-4 h-4" />
-                  Print All
+                  Print Current
                 </button>
                 <button 
-                  onClick={handleSavePDF}
+                  onClick={handleSaveCurrentPDF}
                   disabled={isGeneratingPDF}
                   className={`flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-sm font-medium transition-colors shadow-sm ${isGeneratingPDF ? 'opacity-50 cursor-not-allowed' : ''}`}
                 >
@@ -1119,12 +1123,9 @@ export default function App() {
                   ) : (
                     <Download className="w-4 h-4" />
                   )}
-                  {isGeneratingPDF ? 'Generating...' : 'Save All to PDF'}
+                  {isGeneratingPDF ? 'Generating...' : 'Save to PDF'}
                 </button>
               </div>
-              <span className="text-[10px] text-gray-500 print:hidden">
-                *Open app in a new tab to print
-              </span>
             </div>
           </div>
         </div>
@@ -1197,7 +1198,7 @@ export default function App() {
         </div>
       )}
 
-      <div id="report-container" className={`max-w-[1400px] mx-auto bg-white print:max-w-none print:shadow-none shadow-lg border-4 border-blue-600 print:border-blue-600 p-4 sm:p-8 overflow-x-auto ${printMode === 'ALL' ? 'pdf-mode' : ''}`}>
+      <div id="report-container" className={`max-w-[1400px] mx-auto bg-white print:max-w-none print:shadow-none shadow-lg border-4 border-blue-600 print:border-none p-4 sm:p-8 print:p-0 overflow-x-auto ${printMode === 'ALL' ? 'pdf-mode' : ''}`}>
         
         {/* Data Tables */}
         <div className="w-full overflow-x-auto">
