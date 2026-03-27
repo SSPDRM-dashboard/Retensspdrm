@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { Printer, FileSpreadsheet, CalendarDays, CalendarRange, Users, Database, RefreshCw, AlertCircle, CheckCircle2, Download } from 'lucide-react';
+import { Printer, FileSpreadsheet, CalendarDays, CalendarRange, Users, Database, RefreshCw, AlertCircle, CheckCircle2, Download, User } from 'lucide-react';
 import Papa from 'papaparse';
 import html2pdf from 'html2pdf.js';
 
@@ -55,12 +55,16 @@ const years = [2024, 2025, 2026, 2027, 2028];
 // ==========================================
 // PASTE YOUR GOOGLE SHEET ID HERE
 // Example: "1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms"
-const GOOGLE_SHEET_ID = "1mD8nfxGetTY1Xi4o4d471eCFOCDmbEJ_ZclBguqsnMI";
+const GOOGLE_SHEET_ID: string = "1mD8nfxGetTY1Xi4o4d471eCFOCDmbEJ_ZclBguqsnMI";
 
-type TabType = 'DAILY' | 'WEEKLY' | 'RANK';
+type TabType = 'DAILY' | 'WEEKLY' | 'RANK' | 'PERSONAL';
 
 export default function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [userRole, setUserRole] = useState('');
+  const [userTab, setUserTab] = useState('');
+  const [userDistrict, setUserDistrict] = useState('');
+  const [loggedInName, setLoggedInName] = useState('');
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [loginError, setLoginError] = useState('');
@@ -70,6 +74,7 @@ export default function App() {
   const [selectedMonth, setSelectedMonth] = useState('JANUARY');
   const [selectedYear, setSelectedYear] = useState(2026);
   const [selectedDistrict, setSelectedDistrict] = useState('ALOR GAJAH');
+  const [selectedPerson, setSelectedPerson] = useState('ALL');
 
   const [printMode, setPrintMode] = useState<'CURRENT' | 'ALL'>('CURRENT');
   const [isGeneratingPDF, setIsGeneratingPDF] = useState(false);
@@ -86,8 +91,43 @@ export default function App() {
   // Load saved auth on mount
   useEffect(() => {
     const savedAuth = localStorage.getItem('pdrm_auth');
+    const savedRole = localStorage.getItem('pdrm_user_role');
+    const savedName = localStorage.getItem('pdrm_user_name');
+    const savedTab = localStorage.getItem('pdrm_user_tab');
+    const savedDistrict = localStorage.getItem('pdrm_user_district');
     if (savedAuth === 'true') {
       setIsAuthenticated(true);
+      if (savedRole) setUserRole(savedRole);
+      if (savedName) setLoggedInName(savedName);
+      if (savedTab) setUserTab(savedTab);
+      if (savedDistrict) {
+        setUserDistrict(savedDistrict);
+        if (savedRole && savedRole.toLowerCase() !== 'admin') {
+          setSelectedDistrict(savedDistrict);
+        }
+      }
+      
+      if (savedRole && savedRole.toLowerCase() !== 'admin') {
+        let initialTab: TabType = 'PERSONAL';
+        const tabStr = (savedTab || '').toUpperCase();
+        const tabParts = tabStr.split(/[,/]/).map(t => t.trim());
+        
+        // Find the first valid tab code in the saved string
+        const firstValid = tabParts.find(t => ['T1', 'T2', 'T3', 'T4'].includes(t));
+        
+        if (firstValid === 'T1') initialTab = 'WEEKLY';
+        else if (firstValid === 'T2') initialTab = 'DAILY';
+        else if (firstValid === 'T3') initialTab = 'RANK';
+        else if (firstValid === 'T4') initialTab = 'PERSONAL';
+        // Fallback to includes
+        else if (tabStr.includes('T1')) initialTab = 'WEEKLY';
+        else if (tabStr.includes('T2')) initialTab = 'DAILY';
+        else if (tabStr.includes('T3')) initialTab = 'RANK';
+        else if (tabStr.includes('T4')) initialTab = 'PERSONAL';
+        
+        setActiveTab(initialTab);
+        if (savedName) setSelectedPerson(savedName);
+      }
     }
   }, []);
 
@@ -133,9 +173,48 @@ export default function App() {
           
           if (user) {
             setIsAuthenticated(true);
+            const role = (user.Role || user.role || user.ROLE || '').toString().trim();
+            // Fallback to Username if Name column doesn't exist
+            const name = (user.Name || user.name || user.NAME || user.Username || user.username || '').toString().trim().toUpperCase();
+            const defaultTab = (user.tab || user.Tab || user.TAB || '').toString().trim().toUpperCase();
+            const district = (user.District || user.district || user.DISTRICT || '').toString().trim().toUpperCase();
+            
+            setUserRole(role);
+            setLoggedInName(name);
+            setUserTab(defaultTab);
+            setUserDistrict(district);
+            
             localStorage.setItem('pdrm_auth', 'true');
-            localStorage.setItem('pdrm_user_role', user.Role || '');
-            localStorage.setItem('pdrm_user_tab', user.tab || '');
+            localStorage.setItem('pdrm_user_role', role);
+            localStorage.setItem('pdrm_user_name', name);
+            localStorage.setItem('pdrm_user_tab', defaultTab);
+            localStorage.setItem('pdrm_user_district', district);
+            
+            if (role.toLowerCase() !== 'admin') {
+              if (district) setSelectedDistrict(district);
+              let initialTab: TabType = 'PERSONAL';
+              const tabParts = defaultTab.split(/[,/]/).map(t => t.trim().toUpperCase());
+              
+              // Find the first valid tab code in the user's string
+              const firstValid = tabParts.find(t => ['T1', 'T2', 'T3', 'T4'].includes(t));
+              
+              if (firstValid === 'T1') initialTab = 'WEEKLY';
+              else if (firstValid === 'T2') initialTab = 'DAILY';
+              else if (firstValid === 'T3') initialTab = 'RANK';
+              else if (firstValid === 'T4') initialTab = 'PERSONAL';
+              // If no valid code found but string is not empty, check for includes as fallback
+              else if (defaultTab.includes('T1')) initialTab = 'WEEKLY';
+              else if (defaultTab.includes('T2')) initialTab = 'DAILY';
+              else if (defaultTab.includes('T3')) initialTab = 'RANK';
+              else if (defaultTab.includes('T4')) initialTab = 'PERSONAL';
+              
+              setActiveTab(initialTab);
+              if (name) setSelectedPerson(name);
+            } else {
+              setActiveTab('DAILY');
+              setSelectedPerson('ALL');
+            }
+            
             setLoginError('');
           } else {
             setLoginError('Invalid username or password');
@@ -156,7 +235,15 @@ export default function App() {
 
   const handleLogout = () => {
     setIsAuthenticated(false);
+    setUserRole('');
+    setLoggedInName('');
+    setUserTab('');
+    setUserDistrict('');
     localStorage.removeItem('pdrm_auth');
+    localStorage.removeItem('pdrm_user_role');
+    localStorage.removeItem('pdrm_user_name');
+    localStorage.removeItem('pdrm_user_tab');
+    localStorage.removeItem('pdrm_user_district');
   };
 
   // Fetch data when year changes
@@ -226,6 +313,7 @@ export default function App() {
     const daily = tasksList.map((task, i) => ({ id: i + 1, name: task, days: Array(31).fill(null) }));
     const weekly = tasksList.map((task, i) => ({ id: i + 1, name: task, weeks: Array(5).fill(0) }));
     const rank = tasksList.map((task, i) => ({ id: i + 1, name: task, ranks: Array(8).fill(null) }));
+    const personalMap = new Map<string, any>();
     const debugLogs: any[] = [];
 
     if (!rawData || rawData.length === 0) {
@@ -239,8 +327,8 @@ export default function App() {
     let colIndices = {
       date: -1,
       district: -1,
-      tasks: [] as number[],
-      hours: [] as number[],
+      task: -1,
+      hours: -1,
       rank: -1,
       colT: -1
     };
@@ -248,6 +336,8 @@ export default function App() {
     for (let i = 0; i < Math.min(20, rawData.length); i++) {
       const row = rawData[i];
       if (!Array.isArray(row)) continue;
+      
+      console.log("Row " + i + ":", row);
       
       const dateIdx = row.findIndex(c => String(c).toUpperCase().includes('TARIKH'));
       const districtIdx = row.findIndex(c => String(c).toUpperCase().includes('DAERAH'));
@@ -257,15 +347,12 @@ export default function App() {
         colIndices.date = dateIdx;
         colIndices.district = districtIdx;
         
-        row.forEach((c, idx) => {
-          const str = String(c).toUpperCase();
-          if (str.includes('JENIS TUGASAN')) colIndices.tasks.push(idx);
-          if (str.includes('JUMLAH JAM')) colIndices.hours.push(idx);
-        });
+        colIndices.task = row.findIndex(c => String(c).toUpperCase().includes('JENIS TUGASAN'));
+        colIndices.hours = row.findIndex(c => String(c).toUpperCase().includes('JUMLAH JAM'));
         
-        // Fallback to C,E,G,I (2,4,6,8) and D,F,H,J (3,5,7,9) if not found dynamically
-        if (colIndices.tasks.length === 0) colIndices.tasks = [2, 4, 6, 8].filter(idx => idx < row.length);
-        if (colIndices.hours.length === 0) colIndices.hours = [3, 5, 7, 9].filter(idx => idx < row.length);
+        // Fallback if not found dynamically (assuming they are after the 4 pairs of Balai/Name)
+        if (colIndices.task === -1) colIndices.task = 10;
+        if (colIndices.hours === -1) colIndices.hours = 11;
 
         colIndices.rank = row.findIndex(c => String(c).toUpperCase().includes('PANGKAT'));
         colIndices.colT = row.findIndex(c => String(c).toUpperCase().includes('NYATAKAN') || String(c).toUpperCase().includes('LAIN-LAIN TUGAS') && !String(c).toUpperCase().includes('JENIS'));
@@ -327,89 +414,111 @@ export default function App() {
         }
       }
 
-      const isMonthMatch = rowMonth !== -1 && months[rowMonth] === selectedMonth;
       const isYearMatch = rowYear !== -1 && rowYear === selectedYear;
       const isDistrictMatch = districtStr && String(districtStr).trim().toUpperCase().includes(selectedDistrict.toUpperCase());
 
-      if (!isMonthMatch || !isYearMatch || !isDistrictMatch) {
+      if (!isYearMatch || !isDistrictMatch) {
         continue;
       }
 
-      // Process each task/hours pair
-      const pairsCount = Math.min(colIndices.tasks.length, colIndices.hours.length);
+      let taskStr = colIndices.task !== -1 && colIndices.task < row.length ? row[colIndices.task] : null;
+      let hoursStr = colIndices.hours !== -1 && colIndices.hours < row.length ? row[colIndices.hours] : null;
+
+      const totalHours = parseFloat(String(hoursStr)) || 0;
+
+      // Extract person name
+      let personName = '';
+      const nameIndices = [3, 5, 7, 9];
+      nameIndices.forEach(idx => {
+        if (idx < row.length && row[idx] && String(row[idx]).trim() !== '') {
+          personName = String(row[idx]).trim().toUpperCase();
+        }
+      });
+
+      if (personName) {
+        if (!personalMap.has(personName)) {
+          personalMap.set(personName, {
+            name: personName,
+            rank: String(rankStr || '').toUpperCase().trim(),
+            months: Array(12).fill(0),
+            total: 0
+          });
+        }
+        const pData = personalMap.get(personName)!;
+        if (rowMonth >= 0 && rowMonth < 12) {
+          pData.months[rowMonth] += totalHours;
+          pData.total += totalHours;
+        }
+      }
+
+      const isMonthMatch = rowMonth !== -1 && months[rowMonth] === selectedMonth;
+      if (!isMonthMatch) {
+        continue;
+      }
+
+      if (!taskStr || !hoursStr || String(taskStr).trim() === '' || String(hoursStr).trim() === '') {
+        continue;
+      }
+
+      // If task is LAIN-LAIN TUGAS, check Column T for the specific task name
+      if (normalizeStr(String(taskStr)) === normalizeStr('LAIN-LAIN TUGAS') && colIndices.colT !== -1 && row.length > colIndices.colT) {
+        const colTValue = String(row[colIndices.colT]).trim();
+        if (colTValue) {
+          // Check if colTValue matches any of our known tasks
+          const matchedTask = tasksList.find(t => normalizeStr(t) === normalizeStr(colTValue));
+          if (matchedTask) {
+            taskStr = matchedTask;
+          } else {
+            // Some specific mappings based on common entries
+            const normalizedColT = normalizeStr(colTValue);
+            if (normalizedColT.includes('trafik') || normalizedColT.includes('traffik')) taskStr = 'TUGAS TRAFIK';
+            else if (normalizedColT.includes('lalulintas')) taskStr = 'KAWALAN LALULINTAS';
+            else if (normalizedColT.includes('mahkamah')) taskStr = 'TUGASAN MAHKAMAH';
+            else if (normalizedColT.includes('khas')) taskStr = 'TUGASAN KHAS';
+            else if (normalizedColT.includes('mesyuarat')) taskStr = 'MESYUARAT';
+            else if (normalizedColT.includes('jagaaman')) taskStr = 'JAGA AMAN';
+            else if (normalizedColT.includes('operasi')) taskStr = 'OPERASI';
+          }
+        }
+      }
+
+      const taskIndex = tasksList.findIndex(t => normalizeStr(t) === normalizeStr(String(taskStr)));
       
-      for (let p = 0; p < pairsCount; p++) {
-        const taskIdx = colIndices.tasks[p];
-        const hoursIdx = colIndices.hours[p];
-        
-        let taskStr = taskIdx !== -1 && taskIdx < row.length ? row[taskIdx] : null;
-        let hoursStr = hoursIdx !== -1 && hoursIdx < row.length ? row[hoursIdx] : null;
-        
-        if (!taskStr || !hoursStr || String(taskStr).trim() === '' || String(hoursStr).trim() === '') {
-          continue; // Skip empty pairs
-        }
+      if (taskIndex === -1) {
+        continue;
+      }
 
-        // If task is LAIN-LAIN TUGAS, check Column T for the specific task name
-        if (normalizeStr(String(taskStr)) === normalizeStr('LAIN-LAIN TUGAS') && colIndices.colT !== -1 && row.length > colIndices.colT) {
-          const colTValue = String(row[colIndices.colT]).trim();
-          if (colTValue) {
-            // Check if colTValue matches any of our known tasks
-            const matchedTask = tasksList.find(t => normalizeStr(t) === normalizeStr(colTValue));
-            if (matchedTask) {
-              taskStr = matchedTask;
-            } else {
-              // Some specific mappings based on common entries
-              const normalizedColT = normalizeStr(colTValue);
-              if (normalizedColT.includes('trafik') || normalizedColT.includes('traffik')) taskStr = 'TUGAS TRAFIK';
-              else if (normalizedColT.includes('lalulintas')) taskStr = 'KAWALAN LALULINTAS';
-              else if (normalizedColT.includes('mahkamah')) taskStr = 'TUGASAN MAHKAMAH';
-              else if (normalizedColT.includes('khas')) taskStr = 'TUGASAN KHAS';
-              else if (normalizedColT.includes('mesyuarat')) taskStr = 'MESYUARAT';
-              else if (normalizedColT.includes('jagaaman')) taskStr = 'JAGA AMAN';
-              else if (normalizedColT.includes('operasi')) taskStr = 'OPERASI';
-            }
+      // Daily
+      if (rowDay >= 1 && rowDay <= 31) {
+        daily[taskIndex].days[rowDay - 1] = (daily[taskIndex].days[rowDay - 1] || 0) + totalHours;
+      }
+
+      // Weekly
+      const weekIndex = Math.min(Math.floor((rowDay - 1) / 7), 4);
+      weekly[taskIndex].weeks[weekIndex] += totalHours;
+
+      // Rank
+      if (rankStr) {
+        const rawRank = String(rankStr).toUpperCase().replace(/\/SP$/, '').trim();
+        let rankIndex = ranksList.findIndex(r => r === rawRank);
+        
+        if (rankIndex === -1) {
+          if (rawRank === 'KONST') {
+            rankIndex = ranksList.indexOf('KONSTABEL');
+          } else {
+            // Fallback fuzzy match
+            rankIndex = ranksList.findIndex(r => normalizeStr(r) === normalizeStr(String(rankStr)));
           }
         }
-
-        const taskIndex = tasksList.findIndex(t => normalizeStr(t) === normalizeStr(String(taskStr)));
         
-        if (taskIndex === -1) {
-          continue;
-        }
-
-        const hours = parseFloat(String(hoursStr)) || 0;
-
-        // Daily
-        if (rowDay >= 1 && rowDay <= 31) {
-          daily[taskIndex].days[rowDay - 1] = (daily[taskIndex].days[rowDay - 1] || 0) + hours;
-        }
-
-        // Weekly
-        const weekIndex = Math.min(Math.floor((rowDay - 1) / 7), 4);
-        weekly[taskIndex].weeks[weekIndex] += hours;
-
-        // Rank
-        if (rankStr) {
-          const rawRank = String(rankStr).toUpperCase().replace(/\/SP$/, '').trim();
-          let rankIndex = ranksList.findIndex(r => r === rawRank);
-          
-          if (rankIndex === -1) {
-            if (rawRank === 'KONST') {
-              rankIndex = ranksList.indexOf('KONSTABEL');
-            } else {
-              // Fallback fuzzy match
-              rankIndex = ranksList.findIndex(r => normalizeStr(r) === normalizeStr(String(rankStr)));
-            }
-          }
-          
-          if (rankIndex !== -1) {
-            rank[taskIndex].ranks[rankIndex] = (rank[taskIndex].ranks[rankIndex] || 0) + hours;
-          }
+        if (rankIndex !== -1) {
+          rank[taskIndex].ranks[rankIndex] = (rank[taskIndex].ranks[rankIndex] || 0) + totalHours;
         }
       }
     }
 
-    return { daily, weekly, rank, debugLogs };
+    const personal = Array.from(personalMap.values()).sort((a, b) => a.name.localeCompare(b.name));
+    return { daily, weekly, rank, personal, debugLogs };
   }, [rawData, csvFields, selectedMonth, selectedYear, selectedDistrict]);
 
   // --- CALCULATIONS ---
@@ -524,11 +633,11 @@ export default function App() {
       }
       
       const opt = {
-        margin:       [10, 10, 10, 10],
+        margin:       [10, 10, 10, 10] as [number, number, number, number],
         filename:     `SSPDRM_Report_${selectedMonth}_${selectedYear}.pdf`,
-        image:        { type: 'jpeg', quality: 0.98 },
+        image:        { type: 'jpeg' as const, quality: 0.98 },
         html2canvas:  { scale: 2, windowWidth: 1400 },
-        jsPDF:        { unit: 'pt', format: [800, 500], orientation: 'landscape' },
+        jsPDF:        { unit: 'pt' as const, format: [800, 500] as [number, number], orientation: 'landscape' as const },
         pagebreak:    { mode: 'css' }
       };
 
@@ -798,6 +907,101 @@ export default function App() {
     </table>
   );
 
+  const renderPersonalTable = () => {
+    const monthNames = ['JAN', 'FEB', 'MAC', 'APR', 'MEI', 'JUN', 'JUL', 'OGOS', 'SEPT', 'OKT', 'NOV', 'DIS'];
+    
+    let displayedPersonnel = processedData.personal;
+    
+    if (userRole.toLowerCase() !== 'admin') {
+      displayedPersonnel = processedData.personal.filter(p => p.name === loggedInName);
+    } else if (selectedPerson !== 'ALL') {
+      displayedPersonnel = processedData.personal.filter(p => p.name === selectedPerson);
+    }
+
+    const monthTotals = Array(12).fill(0);
+    let grandTotal = 0;
+    displayedPersonnel.forEach(p => {
+      p.months.forEach((m: number, i: number) => {
+        monthTotals[i] += m;
+        grandTotal += m;
+      });
+    });
+
+    return (
+      <div className="w-full">
+        {(userRole.toLowerCase() !== 'admin' || selectedPerson !== 'ALL') && displayedPersonnel.length > 0 && (
+          <div className="flex justify-between text-sm sm:text-base font-bold mb-6 text-left border-b border-black pb-4">
+            <div>
+              <div className="flex mb-2">
+                <div className="w-32">NAMA</div>
+                <div>: <span className="ml-2 font-normal">{displayedPersonnel[0].name}</span></div>
+              </div>
+              <div className="flex">
+                <div className="w-32">PANGKAT / NO</div>
+                <div>: <span className="ml-2 font-normal">{displayedPersonnel[0].rank}</span></div>
+              </div>
+            </div>
+            <div>
+              <div className="flex">
+                <div className="w-48">NO. KAD PENGENALAN</div>
+                <div>: <span className="ml-2 font-normal"></span></div>
+              </div>
+            </div>
+          </div>
+        )}
+        
+        <table className="w-full border-collapse border border-black text-xs sm:text-sm text-center font-medium print:break-inside-avoid">
+          <thead>
+            <tr className="bg-gray-100 print:bg-transparent">
+              <th className="border border-black p-2 w-10">BIL</th>
+              <th className="border border-black p-2 text-left min-w-[200px]">NAMA</th>
+              <th className="border border-black p-2 w-32">NO. PANGKAT</th>
+              {monthNames.map(m => (
+                <th key={m} className="border border-black p-1 w-12">{m}</th>
+              ))}
+              <th className="border border-black p-2 w-20">JUMLAH<br/>JAM</th>
+            </tr>
+          </thead>
+          <tbody>
+            {displayedPersonnel.map((person, idx) => (
+              <tr key={idx} className="even:bg-gray-50/50 print:even:bg-transparent">
+                <td className="border border-black p-1">{idx + 1}</td>
+                <td className="border border-black p-1 text-left pl-2">{person.name}</td>
+                <td className="border border-black p-1">{person.rank}</td>
+                {person.months.map((hours: number, i: number) => (
+                  <td key={i} className="border border-black p-1">{hours || 0}</td>
+                ))}
+                <td className="border border-black p-1 font-bold bg-gray-50 print:bg-transparent">{person.total}</td>
+              </tr>
+            ))}
+            {displayedPersonnel.length === 0 && (
+              <tr>
+                <td colSpan={16} className="border border-black p-4 text-gray-500">Tiada rekod anggota dijumpai untuk tahun {selectedYear}</td>
+              </tr>
+            )}
+            {displayedPersonnel.length > 0 && (
+              <tr className="bg-gray-50 print:bg-transparent font-bold">
+                <td className="border border-black p-2 text-right pr-4" colSpan={3}>JUMLAH KESELURUHAN</td>
+                {monthTotals.map((total, i) => (
+                  <td key={i} className="border border-black p-1 text-blue-600 print:text-black">{total || 0}</td>
+                ))}
+                <td className="border border-black p-1 text-blue-600 print:text-black">{grandTotal}</td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+        
+        {/* Signature Area */}
+        <div className="mt-16 text-left text-sm font-bold print:block">
+          <div className="mb-16">Disahkan oleh</div>
+          <div className="border-b border-black w-64 mb-2"></div>
+          <div>(Nama & Jawatan)</div>
+          <div>Tarikh</div>
+        </div>
+      </div>
+    );
+  };
+
   return (
     <div className="min-h-screen bg-gray-100 p-4 sm:p-8 print:p-0 print:bg-white">
       {/* Controls - Hidden when printing */}
@@ -828,9 +1032,14 @@ export default function App() {
             <select 
               value={selectedDistrict}
               onChange={(e) => setSelectedDistrict(e.target.value)}
-              className="px-3 py-2 bg-gray-50 border border-gray-300 rounded-lg text-sm font-medium focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+              disabled={userRole.toLowerCase() !== 'admin'}
+              className="px-3 py-2 bg-gray-50 border border-gray-300 rounded-lg text-sm font-medium focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none disabled:opacity-75 disabled:bg-gray-100"
             >
-              {districts.map(d => <option key={d} value={d}>{d}</option>)}
+              {userRole.toLowerCase() === 'admin' ? (
+                districts.map(d => <option key={d} value={d}>{d}</option>)
+              ) : (
+                <option value={userDistrict}>{userDistrict}</option>
+              )}
             </select>
             
             <select 
@@ -848,6 +1057,22 @@ export default function App() {
             >
               {years.map(y => <option key={y} value={y}>{y}</option>)}
             </select>
+
+            {activeTab === 'PERSONAL' && (
+              <select 
+                value={selectedPerson}
+                onChange={(e) => setSelectedPerson(e.target.value)}
+                disabled={userRole.toLowerCase() !== 'admin'}
+                className="px-3 py-2 bg-gray-50 border border-gray-300 rounded-lg text-sm font-medium focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none max-w-[200px] truncate disabled:opacity-75 disabled:bg-gray-100"
+              >
+                {userRole.toLowerCase() === 'admin' && <option value="ALL">SEMUA ANGGOTA</option>}
+                {processedData.personal
+                  .filter(p => userRole.toLowerCase() === 'admin' || p.name === loggedInName)
+                  .map(p => (
+                  <option key={p.name} value={p.name}>{p.name}</option>
+                ))}
+              </select>
+            )}
 
             {(GOOGLE_SHEET_ID && GOOGLE_SHEET_ID !== "YOUR_GOOGLE_SHEET_ID_HERE") && (
               <button 
@@ -898,39 +1123,58 @@ export default function App() {
 
         {/* Tabs */}
         <div className="flex gap-2 mt-6 border-b border-gray-200 pb-px">
-          <button
-            onClick={() => setActiveTab('DAILY')}
-            className={`flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-t-lg transition-colors ${
-              activeTab === 'DAILY' 
-                ? 'bg-blue-50 text-blue-700 border-b-2 border-blue-700' 
-                : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
-            }`}
-          >
-            <CalendarDays className="w-4 h-4" />
-            Harian (Daily)
-          </button>
-          <button
-            onClick={() => setActiveTab('WEEKLY')}
-            className={`flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-t-lg transition-colors ${
-              activeTab === 'WEEKLY' 
-                ? 'bg-blue-50 text-blue-700 border-b-2 border-blue-700' 
-                : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
-            }`}
-          >
-            <CalendarRange className="w-4 h-4" />
-            Mingguan (Weekly)
-          </button>
-          <button
-            onClick={() => setActiveTab('RANK')}
-            className={`flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-t-lg transition-colors ${
-              activeTab === 'RANK' 
-                ? 'bg-blue-50 text-blue-700 border-b-2 border-blue-700' 
-                : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
-            }`}
-          >
-            <Users className="w-4 h-4" />
-            Pangkat (Rank)
-          </button>
+          {(userRole.toLowerCase() === 'admin' || userTab.toUpperCase().includes('T2')) && (
+            <button
+              onClick={() => setActiveTab('DAILY')}
+              className={`flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-t-lg transition-colors ${
+                activeTab === 'DAILY' 
+                  ? 'bg-blue-50 text-blue-700 border-b-2 border-blue-700' 
+                  : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
+              }`}
+            >
+              <CalendarDays className="w-4 h-4" />
+              Bulanan (Monthly)
+            </button>
+          )}
+          {(userRole.toLowerCase() === 'admin' || userTab.toUpperCase().includes('T1')) && (
+            <button
+              onClick={() => setActiveTab('WEEKLY')}
+              className={`flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-t-lg transition-colors ${
+                activeTab === 'WEEKLY' 
+                  ? 'bg-blue-50 text-blue-700 border-b-2 border-blue-700' 
+                  : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
+              }`}
+            >
+              <CalendarRange className="w-4 h-4" />
+              Mingguan (Weekly)
+            </button>
+          )}
+          {(userRole.toLowerCase() === 'admin' || userTab.toUpperCase().includes('T3')) && (
+            <button
+              onClick={() => setActiveTab('RANK')}
+              className={`flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-t-lg transition-colors ${
+                activeTab === 'RANK' 
+                  ? 'bg-blue-50 text-blue-700 border-b-2 border-blue-700' 
+                  : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
+              }`}
+            >
+              <Users className="w-4 h-4" />
+              Pangkat (Rank)
+            </button>
+          )}
+          {(userRole.toLowerCase() === 'admin' || userTab.toUpperCase().includes('T4') || !userTab) && (
+            <button
+              onClick={() => setActiveTab('PERSONAL')}
+              className={`flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-t-lg transition-colors ${
+                activeTab === 'PERSONAL' 
+                  ? 'bg-blue-50 text-blue-700 border-b-2 border-blue-700' 
+                  : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
+              }`}
+            >
+              <User className="w-4 h-4" />
+              Tahunan (Yearly)
+            </button>
+          )}
         </div>
       </div>
 
@@ -999,6 +1243,26 @@ export default function App() {
                 </div>
               )}
               {renderRankTable()}
+            </div>
+          )}
+
+          {(printMode === 'ALL' || activeTab === 'PERSONAL') && (
+            <div className={`print-page-container ${printMode === 'ALL' ? 'html2pdf__page-break' : ''}`}>
+              <div className="text-center mb-6">
+                <h2 className="text-xl sm:text-2xl font-bold uppercase tracking-wide text-gray-900">
+                  SUKARELAWAN SIMPANAN POLIS DIRAJA MALAYSIA (SSPDRM)
+                </h2>
+                <div className="text-sm sm:text-base font-semibold mt-1 uppercase">
+                  KONTINJEN : <span className="ml-2">MELAKA</span>
+                </div>
+                <div className="text-sm sm:text-base font-semibold mt-1 uppercase">
+                  DAERAH : <span className="ml-2">{selectedDistrict}</span>
+                </div>
+                <div className="text-sm sm:text-base font-semibold mt-4 uppercase">
+                  JUMLAH JAM TAHUNAN BAGI TAHUN <span className="ml-2 border-b border-black pb-1 px-4">{selectedYear}</span>
+                </div>
+              </div>
+              {renderPersonalTable()}
             </div>
           )}
         </div>
