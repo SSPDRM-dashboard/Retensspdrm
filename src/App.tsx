@@ -900,8 +900,8 @@ export default function App() {
           </th>
         </tr>
         <tr className="bg-white">
-          <th className="border border-black p-2 w-12" rowSpan={2}>BIL</th>
-          <th className="border border-black p-2 text-left w-48 min-w-[150px]" rowSpan={2}>JENIS TUGAS</th>
+          <th className="border border-black p-2 w-12">BIL</th>
+          <th className="border border-black p-2 text-left w-48 min-w-[150px]">JENIS TUGAS</th>
           <th className="border border-black p-1 w-16">ASP/SP</th>
           <th className="border border-black p-1 w-16">INSP/SP</th>
           <th className="border border-black p-1 w-16">SI/SP</th>
@@ -910,17 +910,7 @@ export default function App() {
           <th className="border border-black p-1 w-16">KPL/SP</th>
           <th className="border border-black p-1 w-16">L/KPL/SP</th>
           <th className="border border-black p-1 w-20">KONST/SP</th>
-          <th className="border border-black p-2 w-24 font-bold" rowSpan={2}>JUMLAH</th>
-        </tr>
-        <tr className="bg-white">
-          <th className="border border-black p-1">ASP</th>
-          <th className="border border-black p-1">INSP</th>
-          <th className="border border-black p-1">SI</th>
-          <th className="border border-black p-1">SM</th>
-          <th className="border border-black p-1">SJN</th>
-          <th className="border border-black p-1">KPL</th>
-          <th className="border border-black p-1">L/KPL</th>
-          <th className="border border-black p-1">KONSTABEL</th>
+          <th className="border border-black p-2 w-24 font-bold">JUMLAH</th>
         </tr>
       </thead>
       <tbody>
@@ -993,7 +983,7 @@ export default function App() {
         
         <table className="w-full border-collapse border border-black text-xs sm:text-sm text-center font-medium print:break-inside-avoid">
           <thead>
-            <tr className="bg-gray-100 print:bg-transparent">
+            <tr className="bg-[#135DD8] text-white">
               <th className="border border-black p-2 w-10">BIL</th>
               <th className="border border-black p-2 w-32">NO. BADAN</th>
               <th className="border border-black p-2 w-24">PANGKAT</th>
@@ -1314,14 +1304,14 @@ export default function App() {
                 <h2 className="text-xl sm:text-2xl font-bold uppercase tracking-wide text-gray-900">
                   SUKARELAWAN SIMPANAN POLIS DIRAJA MALAYSIA (SSPDRM)
                 </h2>
-                <div className="text-sm sm:text-base font-semibold mt-1 uppercase">
+                <div className="text-xl sm:text-2xl font-bold mt-1 uppercase">
                   KONTINJEN : <span className="ml-2">MELAKA</span>
                 </div>
-                <div className="text-sm sm:text-base font-semibold mt-1 uppercase">
+                <div className="text-xl sm:text-2xl font-bold mt-1 uppercase">
                   DAERAH : <span className="ml-2">{selectedDistrict}</span>
                 </div>
-                <div className="text-sm sm:text-base font-semibold mt-4 uppercase">
-                  JUMLAH JAM TAHUNAN BAGI TAHUN <span className="ml-2 border-b border-black pb-1 px-4">{selectedYear}</span>
+                <div className="text-xl sm:text-2xl font-bold mt-4 uppercase">
+                  JUMLAH JAM PENUGSAN BULANAN BAGI TAHUN <span className="ml-2 border-b border-black pb-1 px-4">{selectedYear}</span>
                 </div>
               </div>
               {renderPersonalTable()}
