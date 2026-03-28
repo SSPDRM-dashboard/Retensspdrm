@@ -412,18 +412,19 @@ export default function App() {
       }
 
       const isYearMatch = rowYear !== -1 && rowYear === selectedYear;
-      const isDistrictMatch = districtStr && String(districtStr).trim().toUpperCase().includes(selectedDistrict.toUpperCase());
+      if (!isYearMatch) continue;
 
-      if (!isYearMatch || !isDistrictMatch) {
-        continue;
-      }
+      const isDistrictMatch = districtStr && String(districtStr).trim().toUpperCase().includes(selectedDistrict.toUpperCase());
 
       let taskStr = colIndices.task !== -1 && colIndices.task < row.length ? row[colIndices.task] : null;
       let hoursStr = colIndices.hours !== -1 && colIndices.hours < row.length ? row[colIndices.hours] : null;
 
       const totalHours = parseFloat(String(hoursStr)) || 0;
+      
+      // Construct a comparable date value (YYYYMMDD) for determining latest submission
+      const rowDateValue = rowYear * 10000 + (Math.max(0, rowMonth) + 1) * 100 + Math.max(0, rowDay);
 
-      // Extract person names (multiple people can be in one row)
+      // Personnel data (Tahunan) - Process for everyone in this year to determine their latest district
       const nameIndices = [3, 5, 7, 9];
       nameIndices.forEach(idx => {
         if (idx < row.length && row[idx] && String(row[idx]).trim() !== '') {
@@ -434,8 +435,18 @@ export default function App() {
               name: personName,
               rank: String(rankStr || '').toUpperCase().trim(),
               months: Array(12).fill(0),
-              total: 0
+              total: 0,
+              latestDistrict: String(districtStr || '').trim().toUpperCase(),
+              latestDateValue: rowDateValue
             });
+          } else {
+            const pData = personalMap.get(personName)!;
+            // Update latest district and rank if this row is newer or same date (last row wins)
+            if (rowDateValue >= pData.latestDateValue) {
+              pData.latestDistrict = String(districtStr || '').trim().toUpperCase();
+              pData.latestDateValue = rowDateValue;
+              pData.rank = String(rankStr || '').toUpperCase().trim();
+            }
           }
           
           const pData = personalMap.get(personName)!;
@@ -445,6 +456,11 @@ export default function App() {
           }
         }
       });
+
+      // Daily, Weekly, Rank - these MUST still match the district filter
+      if (!isDistrictMatch) {
+        continue;
+      }
 
       const isMonthMatch = rowMonth !== -1 && months[rowMonth] === selectedMonth;
       if (!isMonthMatch) {
@@ -512,7 +528,44 @@ export default function App() {
       }
     }
 
-    const personal = Array.from(personalMap.values()).sort((a, b) => a.name.localeCompare(b.name));
+    const getRankPriority = (rank: string) => {
+      const normalized = rank.toUpperCase().trim();
+      const hierarchy = [
+        'SUPT', 'DSP', 'ASP', 'INSP', 'SI', 'SM', 'SJN', 'KPL', 'L/KPL', 'KONST'
+      ];
+      for (let i = 0; i < hierarchy.length; i++) {
+        if (normalized.startsWith(hierarchy[i])) return i;
+      }
+      return 100;
+    };
+
+    const extractNoBadan = (name: string, rank: string) => {
+      const nameMatch = name.match(/\d+/);
+      if (nameMatch) return parseInt(nameMatch[0], 10);
+      const rankMatch = rank.match(/\d+/);
+      if (rankMatch) return parseInt(rankMatch[0], 10);
+      return 999999;
+    };
+
+    const personal = Array.from(personalMap.values())
+      .filter(p => p.latestDistrict.includes(selectedDistrict.toUpperCase()))
+      .sort((a, b) => {
+        const priorityA = getRankPriority(a.rank);
+        const priorityB = getRankPriority(b.rank);
+        
+        if (priorityA !== priorityB) {
+          return priorityA - priorityB;
+        }
+        
+        const noBadanA = extractNoBadan(a.name, a.rank);
+        const noBadanB = extractNoBadan(b.name, b.rank);
+        
+        if (noBadanA !== noBadanB) {
+          return noBadanA - noBadanB;
+        }
+        
+        return a.name.localeCompare(b.name);
+      });
     return { daily, weekly, rank, personal, debugLogs };
   }, [rawData, csvFields, selectedMonth, selectedYear, selectedDistrict]);
 
