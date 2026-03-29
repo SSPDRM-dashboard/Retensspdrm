@@ -57,7 +57,7 @@ const years = [2024, 2025, 2026, 2027, 2028];
 // Example: "1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms"
 const GOOGLE_SHEET_ID: string = "1mD8nfxGetTY1Xi4o4d471eCFOCDmbEJ_ZclBguqsnMI";
 
-type TabType = 'MONTHLY' | 'PERSONAL';
+type TabType = 'MONTHLY' | 'PERSONAL' | 'ALLOWANCE';
 
 export default function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -75,6 +75,9 @@ export default function App() {
   const [selectedYear, setSelectedYear] = useState(2026);
   const [selectedDistrict, setSelectedDistrict] = useState('ALOR GAJAH');
   const [selectedPerson, setSelectedPerson] = useState('ALL');
+  const [selectedNoBadanList, setSelectedNoBadanList] = useState<string[]>(Array(10).fill(''));
+  const [voucherSheetId, setVoucherSheetId] = useState('1C7eChL2vbKsk6Yni5rklpx4lBRYQc2kI81V2vGixEa8');
+  const [voucherData, setVoucherData] = useState<any[]>([]);
 
   const [printMode, setPrintMode] = useState<'CURRENT' | 'ALL'>('CURRENT');
   const [isGeneratingPDF, setIsGeneratingPDF] = useState(false);
@@ -95,6 +98,19 @@ export default function App() {
     const savedName = localStorage.getItem('pdrm_user_name');
     const savedTab = localStorage.getItem('pdrm_user_tab');
     const savedDistrict = localStorage.getItem('pdrm_user_district');
+    const savedNoBadan = localStorage.getItem('pdrm_selected_nobadan');
+    const savedVoucherId = localStorage.getItem('pdrm_voucher_sheet_id');
+
+    if (savedNoBadan) {
+      const parsed = JSON.parse(savedNoBadan);
+      if (Array.isArray(parsed)) {
+        const newList = [...parsed];
+        while (newList.length < 10) newList.push('');
+        setSelectedNoBadanList(newList.slice(0, 10));
+      }
+    }
+    if (savedVoucherId) setVoucherSheetId(savedVoucherId);
+
     if (savedAuth === 'true') {
       setIsAuthenticated(true);
       if (savedRole) setUserRole(savedRole);
@@ -125,6 +141,86 @@ export default function App() {
       }
     }
   }, []);
+
+  useEffect(() => {
+    localStorage.setItem('pdrm_selected_nobadan', JSON.stringify(selectedNoBadanList));
+  }, [selectedNoBadanList]);
+
+  useEffect(() => {
+    localStorage.setItem('pdrm_voucher_sheet_id', voucherSheetId);
+    if (voucherSheetId) {
+      fetchVoucherData(voucherSheetId);
+    }
+  }, [voucherSheetId]);
+
+  const fetchVoucherData = async (input: string) => {
+    if (!input) return;
+    let id = input;
+    let gid = '';
+    
+    // Extract ID and GID if it's a full URL
+    if (input.includes('docs.google.com/spreadsheets/d/')) {
+      const match = input.match(/\/d\/([a-zA-Z0-9-_]+)/);
+      if (match) id = match[1];
+      const gidMatch = input.match(/gid=([0-9]+)/);
+      if (gidMatch) gid = `&gid=${gidMatch[1]}`;
+    } else if (id === '1C7eChL2vbKsk6Yni5rklpx4lBRYQc2kI81V2vGixEa8') {
+      gid = '&gid=761351772';
+    }
+
+    try {
+      // Extract ID and GID if it's a full URL
+      let id = input;
+      let gidValue = '761351772';
+      
+      if (input.includes('docs.google.com/spreadsheets/d/')) {
+        const match = input.match(/\/d\/([a-zA-Z0-9-_]+)/);
+        if (match) id = match[1];
+        const gidMatch = input.match(/gid=([0-9]+)/);
+        if (gidMatch) gidValue = gidMatch[1];
+      }
+
+      const fetchUrl = `https://docs.google.com/spreadsheets/d/${id}/export?format=csv&gid=${gidValue}`;
+      
+      const response = await fetch(fetchUrl);
+      if (!response.ok) {
+        console.error("Voucher fetch failed", response.status);
+        return;
+      }
+      
+      const csvText = await response.text();
+      Papa.parse(csvText, {
+        header: false,
+        skipEmptyLines: true,
+        complete: (results) => {
+          const rows = results.data as any[][];
+          if (rows && rows.length > 0) {
+            const mapped = rows.map((row, index) => {
+              // Skip header rows (usually first 1-2 rows)
+              if (index < 1) return null;
+              if (!row || row.length < 4) return null;
+              
+              // Columns D, F, H, J are indices 3, 5, 7, 9
+              const noBadan = [row[3], row[5], row[7], row[9]].filter(Boolean).join(' ');
+              if (!noBadan) return null;
+
+              return {
+                'NO KOD PVR': row[40] || '',
+                'NO AKAUN BANK': row[22] || '',
+                'NAMA BANK': row[21] || '',
+                'NO TELEFON': row[14] || '',
+                'No Badan': noBadan
+              };
+            }).filter(Boolean);
+            
+            setVoucherData(mapped);
+          }
+        }
+      });
+    } catch (e) {
+      console.error("Voucher fetch failed", e);
+    }
+  };
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -368,6 +464,22 @@ export default function App() {
       return { daily, weekly, rank, personal: [], debugLogs };
     }
 
+    const isDistrictMatch = (rowDistrict: any, targetDistrict: string) => {
+      if (!rowDistrict || !targetDistrict) return false;
+      const s = String(rowDistrict).trim().toUpperCase();
+      const t = targetDistrict.trim().toUpperCase();
+      
+      if (s.includes(t) || t.includes(s)) return true;
+      
+      // Handle common abbreviations
+      if (t === 'ALOR GAJAH' && (s === 'AG' || s.includes('ALOR'))) return true;
+      if (t === 'MELAKA TENGAH' && (s === 'MT' || s.includes('TENGAH'))) return true;
+      if (t === 'JASIN' && (s === 'JS' || s.includes('JASIN'))) return true;
+      if (t === 'IPK SSPDRM' && (s === 'IPK')) return true;
+      
+      return false;
+    };
+
     // Process data rows
     for (let i = headerRowIndex + 1; i < rawData.length; i++) {
       const row = rawData[i];
@@ -420,7 +532,7 @@ export default function App() {
       const isYearMatch = rowYear !== -1 && rowYear === selectedYear;
       if (!isYearMatch) continue;
 
-      const isDistrictMatch = districtStr && String(districtStr).trim().toUpperCase().includes(selectedDistrict.toUpperCase());
+      const rowIsDistrictMatch = isDistrictMatch(districtStr, selectedDistrict);
 
       let taskStr = colIndices.task !== -1 && colIndices.task < row.length ? row[colIndices.task] : null;
       let hoursStr = colIndices.hours !== -1 && colIndices.hours < row.length ? row[colIndices.hours] : null;
@@ -443,10 +555,14 @@ export default function App() {
               months: Array(12).fill(0),
               total: 0,
               latestDistrict: String(districtStr || '').trim().toUpperCase(),
-              latestDateValue: rowDateValue
+              latestDateValue: rowDateValue,
+              districts: new Set([String(districtStr || '').trim().toUpperCase()])
             });
           } else {
             const pData = personalMap.get(personName)!;
+            if (districtStr) {
+              pData.districts.add(String(districtStr).trim().toUpperCase());
+            }
             // Update latest district and rank if this row is newer or same date (last row wins)
             if (rowDateValue >= pData.latestDateValue) {
               pData.latestDistrict = String(districtStr || '').trim().toUpperCase();
@@ -464,7 +580,7 @@ export default function App() {
       });
 
       // Daily, Weekly, Rank - these MUST still match the district filter
-      if (!isDistrictMatch) {
+      if (!rowIsDistrictMatch) {
         continue;
       }
 
@@ -554,7 +670,7 @@ export default function App() {
     };
 
     const personal = Array.from(personalMap.values())
-      .filter(p => p.latestDistrict.includes(selectedDistrict.toUpperCase()))
+      .filter(p => Array.from(p.districts as Set<string>).some(d => isDistrictMatch(d, selectedDistrict)))
       .sort((a, b) => {
         const priorityA = getRankPriority(a.rank);
         const priorityB = getRankPriority(b.rank);
@@ -574,6 +690,15 @@ export default function App() {
       });
     return { daily, weekly, rank, personal, debugLogs };
   }, [rawData, csvFields, selectedMonth, selectedYear, selectedDistrict]);
+
+  useEffect(() => {
+    if (selectedPerson !== 'ALL' && processedData.personal.length > 0) {
+      const exists = processedData.personal.some(p => p.name === selectedPerson);
+      if (!exists && userRole.toLowerCase() === 'admin') {
+        setSelectedPerson('ALL');
+      }
+    }
+  }, [selectedDistrict, processedData.personal, selectedPerson, userRole]);
 
   // --- CALCULATIONS ---
   const dailyWithTotals = useMemo(() => {
@@ -1066,6 +1191,478 @@ export default function App() {
     );
   };
 
+  const renderAllowanceTable = () => {
+    const daysInMonth = new Date(selectedYear, months.indexOf(selectedMonth) + 1, 0).getDate();
+    const daysArray = Array.from({ length: 31 }, (_, i) => i + 1);
+
+    // Filter rawData to get daily hours for the 10 selected people
+    const getPersonnelDailyHours = (noBadan: string) => {
+      const dailyHours = Array(31).fill(0);
+      let name = '';
+      let rank = '';
+      
+      if (!noBadan || !rawData || rawData.length === 0) return { dailyHours, name, rank, totalHours: 0 };
+
+      const normalize = (s: string) => String(s || '').replace(/[^0-9]/g, '');
+      const targetNo = normalize(noBadan);
+
+      // Find the person in processedData.personal first to get their name
+      const person = processedData.personal.find(p => {
+        const pNoStr = String(p.name).replace(/[^0-9]/g, '');
+        if (!pNoStr) return false;
+        const pNo = parseInt(pNoStr, 10);
+        const tNo = parseInt(targetNo, 10);
+        return pNo === tNo;
+      });
+
+      if (!person) return { dailyHours, name, rank, totalHours: 0 };
+      
+      name = person.name.replace(/[0-9]/g, '').trim();
+      rank = person.rank;
+
+      // Find header row and indices (same logic as useMemo for consistency)
+      let dateIdx = -1, distIdx = -1, hoursIdx = -1;
+      let headerRowIndex = -1;
+
+      for (let i = 0; i < Math.min(20, rawData.length); i++) {
+        const row = rawData[i];
+        if (!Array.isArray(row)) continue;
+        const dIdx = row.findIndex(c => String(c).toUpperCase().includes('TARIKH'));
+        const dsIdx = row.findIndex(c => String(c).toUpperCase().includes('DAERAH'));
+        if (dIdx !== -1 && dsIdx !== -1) {
+          headerRowIndex = i;
+          dateIdx = dIdx;
+          distIdx = dsIdx;
+          hoursIdx = row.findIndex(c => String(c).toUpperCase().includes('JUMLAH JAM'));
+          if (hoursIdx === -1) hoursIdx = 11; // Fallback
+          break;
+        }
+      }
+
+      const isDistrictMatch = (rowDistrict: any, targetDistrict: string) => {
+        if (!rowDistrict || !targetDistrict) return false;
+        const s = String(rowDistrict).trim().toUpperCase();
+        const t = targetDistrict.trim().toUpperCase();
+        
+        if (s.includes(t) || t.includes(s)) return true;
+        
+        // Handle common abbreviations
+        if (t === 'ALOR GAJAH' && (s === 'AG' || s.includes('ALOR'))) return true;
+        if (t === 'MELAKA TENGAH' && (s === 'MT' || s.includes('TENGAH'))) return true;
+        if (t === 'JASIN' && (s === 'JS' || s.includes('JASIN'))) return true;
+        if (t === 'IPK SSPDRM' && (s === 'IPK')) return true;
+        
+        return false;
+      };
+
+      if (headerRowIndex === -1) return { dailyHours, name, rank, totalHours: 0 };
+
+      rawData.slice(headerRowIndex + 1).forEach((row) => {
+        if (!Array.isArray(row)) return;
+        
+        if (!isDistrictMatch(row[distIdx], selectedDistrict)) return;
+
+        const dateStr = String(row[dateIdx] || '');
+        let rowYear = -1, rowMonth = -1, rowDay = -1;
+
+        // Robust date parsing (same as useMemo)
+        const dateOnly = dateStr.split(' ')[0];
+        const parts = dateOnly.split(/[\/\-]/);
+        if (parts.length === 3) {
+          if (parts[0].length === 4) {
+            rowYear = parseInt(parts[0], 10);
+            rowMonth = parseInt(parts[1], 10) - 1;
+            rowDay = parseInt(parts[2], 10);
+          } else {
+            const p0 = parseInt(parts[0], 10);
+            const p1 = parseInt(parts[1], 10);
+            const p2 = parseInt(parts[2], 10);
+            if (p1 > 12) {
+              rowMonth = p0 - 1; rowDay = p1; rowYear = p2;
+            } else {
+              rowDay = p0; rowMonth = p1 - 1; rowYear = p2;
+            }
+          }
+          if (rowYear < 100) rowYear += 2000;
+        } else {
+          const d = new Date(dateStr);
+          if (!isNaN(d.getTime())) {
+            rowYear = d.getFullYear();
+            rowMonth = d.getMonth();
+            rowDay = d.getDate();
+          }
+        }
+        
+        if (rowYear === selectedYear && months[rowMonth] === selectedMonth) {
+          const rowHours = parseFloat(String(row[hoursIdx])) || 0;
+          
+          // Check if this person is in this row
+          // Columns D, F, H, J (indices 3, 5, 7, 9) are "NOMBOR BADAN DAN NAMA"
+          const nameIndices = [3, 5, 7, 9];
+          const isPresent = nameIndices.some((idx) => {
+            if (idx >= row.length) return false;
+            const rowContent = String(row[idx] || '').toUpperCase();
+            return rowContent.includes(targetNo) || (person.name && rowContent.includes(person.name.toUpperCase()));
+          });
+
+          if (isPresent && rowDay >= 1 && rowDay <= 31) {
+            dailyHours[rowDay - 1] += rowHours;
+          }
+        }
+      });
+
+      const totalHours = dailyHours.reduce((a, b) => a + b, 0);
+      return { dailyHours, name, rank, totalHours };
+    };
+
+    const getRate = (rank: string) => {
+      const r = rank.toUpperCase();
+      if (r.includes('SUPT') || r.includes('DSP') || r.includes('ASP') || r.includes('INSP')) return 9.80;
+      return 8.00;
+    };
+
+    const numberToMalayWords = (n: number) => {
+      const units = ['', 'SATU', 'DUA', 'TIGA', 'EMPAT', 'LIMA', 'ENAM', 'TUJUH', 'LAPAN', 'SEMBILAN'];
+      const teens = ['SEPULUH', 'SEBELAS', 'DUA BELAS', 'TIGA BELAS', 'EMPAT BELAS', 'LIMA BELAS', 'ENAM BELAS', 'TUJUH BELAS', 'LAPAN BELAS', 'SEMBILAN BELAS'];
+      const tens = ['', 'SEPULUH', 'DUA PULUH', 'TIGA PULUH', 'EMPAT PULUH', 'LIMA PULUH', 'ENAM PULUH', 'TUJUH PULUH', 'LAPAN PULUH', 'SEMBILAN PULUH'];
+      
+      const convert = (num: number): string => {
+        if (num === 0) return '';
+        if (num < 10) return units[num];
+        if (num < 20) return teens[num - 10];
+        if (num < 100) return tens[Math.floor(num / 10)] + (num % 10 !== 0 ? ' ' + units[num % 10] : '');
+        if (num < 1000) return (num < 200 ? 'SERATUS' : units[Math.floor(num / 100)] + ' RATUS') + (num % 100 !== 0 ? ' ' + convert(num % 100) : '');
+        if (num < 1000000) return (num < 2000 ? 'SERIBU' : convert(Math.floor(num / 1000)) + ' RIBU') + (num % 1000 !== 0 ? ' ' + convert(num % 1000) : '');
+        return '';
+      };
+
+      const ringgit = Math.floor(n);
+      const sen = Math.round((n - ringgit) * 100);
+      
+      let result = convert(ringgit);
+      if (sen > 0) {
+        result += ' DAN SEN ' + convert(sen);
+      }
+      return result + ' SAHAJA';
+    };
+
+    let grandTotalElaun = 0;
+    let grandTotalHoursWorked = 0;
+    let grandTotalCappedHours = 0;
+    let grandTotalPenugasan = 0;
+
+    return (
+      <div className="w-full space-y-12">
+        {/* DATA READY panel hidden as requested */}
+        {/*
+        <div className="bg-blue-50 p-3 rounded-lg border border-blue-200 flex justify-between items-center print:hidden">
+          <div className="flex items-center gap-4">
+            <div className="flex items-center gap-2">
+              <div className={`w-2 h-2 rounded-full ${rawData.length > 0 ? 'bg-green-500' : 'bg-red-500'}`}></div>
+              <span className="text-xs font-bold text-blue-800 uppercase tracking-wider">
+                {rawData.length > 0 ? `DATA READY: ${rawData.length} ROWS` : 'NO DATA LOADED - CHECK SHEET ID'}
+              </span>
+            </div>
+            {processedData.personal.length > 0 && (
+              <span className="text-xs text-blue-600 font-bold uppercase">
+                | {processedData.personal.length} PERSONNEL FOUND IN {selectedYear}
+              </span>
+            )}
+            <span className="text-xs text-blue-600 font-bold uppercase">
+              | DISTRICT: {selectedDistrict}
+            </span>
+          </div>
+          <div className="flex items-center gap-2">
+            <button 
+              onClick={() => fetchSheetData(GOOGLE_SHEET_ID, selectedYear)}
+              className="text-[10px] bg-blue-600 text-white px-3 py-1.5 rounded font-bold hover:bg-blue-700 flex items-center gap-1 transition-colors"
+            >
+              <RefreshCw size={12} className={isLoading ? 'animate-spin' : ''} />
+              REFRESH DATA
+            </button>
+          </div>
+        </div>
+        */}
+        {/* Report 1: Attendance & Allowance */}
+        <div className="print-page-container relative">
+          <div className="relative z-10">
+            <div className="flex justify-end items-start mb-4">
+              <div className="text-right text-[10px] font-bold">
+                SPDRM MELAKA BR.NO............<br/>
+                LAMPIRAN 'A1'<br/>
+                PDRM (H) 49<br/>
+                <span className="text-[8px]">PNMB.,K.L</span>
+              </div>
+            </div>
+
+            <div className="text-center mb-6 relative">
+              <h2 className="text-xl font-bold uppercase">PASUKAN SUKARELAWAN SIMPANAN POLIS</h2>
+              <div className="text-sm font-bold mt-1">
+                Daftar Kedatangan dan Jadual Elaun bagi Bulan: <span className="border-b border-black px-4">{selectedMonth} {selectedYear}</span>
+              </div>
+              <div className="text-sm font-bold mt-4 flex justify-center items-center gap-8">
+                <span className="text-base">Nama Pasukan :</span>
+                <span className="text-2xl font-black tracking-widest">{selectedDistrict}</span>
+              </div>
+            </div>
+
+            <div className="overflow-x-auto relative">
+              {isLoading && (
+                <div className="absolute inset-0 bg-white/50 flex items-center justify-center z-20 print:hidden">
+                  <div className="flex flex-col items-center gap-2">
+                    <RefreshCw className="animate-spin text-blue-600" size={32} />
+                    <span className="text-xs font-bold text-blue-600 uppercase tracking-widest">Fetching Data...</span>
+                  </div>
+                </div>
+              )}
+              <table className="w-full border-collapse border border-black text-[9px] text-center font-bold">
+                <thead>
+                  <tr className="bg-gray-50">
+                    <th className="border border-black p-1 w-6" rowSpan={2}>Bil</th>
+                    <th className="border border-black p-1 w-16" rowSpan={2}>No</th>
+                    <th className="border border-black p-1 w-16" rowSpan={2}>Pangkat</th>
+                    <th className="border border-black p-1 w-48" rowSpan={2}>Nama</th>
+                    <th className="border border-black p-1" colSpan={31}>Jumlah jam bertugas / berlatih pada tarikh berikut</th>
+                    <th className="border border-black p-0.5 w-10 text-[8px] leading-tight font-bold" colSpan={2}>Jumlah<br/>kedatangan</th>
+                    <th className="border border-black p-0.5 w-10 text-[8px] leading-tight font-bold" rowSpan={2}>Jumlah<br/>Jam<br/>bertugas/<br/>berlatih</th>
+                    <th className="border border-black p-0.5 text-[10px] font-bold" colSpan={3}>ELAUN KENDERAAN</th>
+                    <th className="border border-black p-0.5 w-16 text-[8px] leading-tight font-bold" rowSpan={2}>Belanja Elaun Latihan<br/>(Peringatan A)</th>
+                    <th className="border border-black p-0.5 w-10 text-[8px] leading-tight font-bold" rowSpan={2}>Elaun<br/>kenderaan<br/>(Peringatan<br/>B)</th>
+                    <th className="border border-black p-0.5 w-16 text-[8px] leading-tight font-bold" rowSpan={2}>Jumlah Elaun yang akan<br/>di bayar</th>
+                    <th className="border border-black p-0.5 w-16 text-[8px] leading-tight font-bold" rowSpan={2}>Tanda tangan<br/>penerima</th>
+                  </tr>
+                  <tr className="bg-gray-50">
+                    {daysArray.map(d => <th key={d} className="border border-black p-0.5 w-4">{d}</th>)}
+                    <th className="border border-black p-0.5 text-[7px] leading-tight font-bold">Total<br/>Penugasan</th>
+                    <th className="border border-black p-0.5 text-[7px] leading-tight font-bold">Total<br/>Hours<br/>Working</th>
+                    <th className="border border-black p-0.5 text-[7px] leading-tight font-bold">Jenis<br/>(Peringa<br/>tan B)</th>
+                    <th className="border border-black p-0.5 text-[7px] leading-tight font-bold">Jumlah tiap-<br/>tiap<br/>kedatangan</th>
+                    <th className="border border-black p-0.5 text-[7px] leading-tight font-bold">Elaun<br/>gantian<br/>tetap<br/>basikal</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {Array.from({ length: 15 }).map((_, idx) => {
+                    if (idx < 10) {
+                      const noBadan = selectedNoBadanList[idx] || '';
+                      const { dailyHours, name, rank, totalHours } = getPersonnelDailyHours(noBadan);
+                      const rate = getRate(rank);
+                      const cappedHours = Math.min(totalHours, 48);
+                      const allowance = cappedHours * rate;
+                      const kedatangan = dailyHours.filter(h => h > 0).length;
+                      
+                      grandTotalElaun += allowance;
+                      grandTotalHoursWorked += totalHours;
+                      grandTotalCappedHours += cappedHours;
+                      grandTotalPenugasan += kedatangan;
+
+                      return (
+                        <tr key={idx} className="h-8">
+                          <td className="border border-black p-1">{idx + 1}</td>
+                          <td className="border border-black p-0">
+                            <input 
+                              type="text" 
+                              list="personnel-list"
+                              value={noBadan}
+                              onChange={(e) => {
+                                const newList = [...selectedNoBadanList];
+                                newList[idx] = e.target.value;
+                                setSelectedNoBadanList(newList);
+                              }}
+                              className="w-full h-full text-center bg-transparent border-none outline-none print:placeholder-transparent font-bold"
+                              placeholder="No..."
+                            />
+                          </td>
+                          <td className="border border-black p-1">{rank}</td>
+                          <td className="border border-black p-1 text-left truncate max-w-[120px]">{name || (noBadan ? 'NOT FOUND' : '')}</td>
+                          {dailyHours.map((h, i) => (
+                            <td key={i} className="border border-black p-0.5">{h || ''}</td>
+                          ))}
+                          <td className="border border-black p-1">{kedatangan || ''}</td>
+                          <td className="border border-black p-1">{totalHours || ''}</td>
+                          <td className="border border-black p-1">{cappedHours || ''}</td>
+                          <td className="border border-black p-1"></td>
+                          <td className="border border-black p-1">{noBadan ? rate.toFixed(2) : ''}</td>
+                          <td className="border border-black p-1"></td>
+                          <td className="border border-black p-1">{noBadan ? allowance.toFixed(2) : ''}</td>
+                          <td className="border border-black p-1"></td>
+                          <td className="border border-black p-1 font-bold">{noBadan ? allowance.toFixed(2) : ''}</td>
+                          <td className="border border-black p-1"></td>
+                        </tr>
+                      );
+                    } else if (idx < 13) {
+                      // Empty rows 11, 12, 13
+                      return (
+                        <tr key={idx} className="h-8">
+                          <td className="border border-black p-1">{idx + 1}</td>
+                          <td className="border border-black p-1"></td>
+                          <td className="border border-black p-1"></td>
+                          <td className="border border-black p-1"></td>
+                          {Array(31).fill(0).map((_, i) => <td key={i} className="border border-black p-0.5"></td>)}
+                          <td className="border border-black p-1"></td>
+                          <td className="border border-black p-1"></td>
+                          <td className="border border-black p-1"></td>
+                          <td className="border border-black p-1"></td>
+                          <td className="border border-black p-1"></td>
+                          <td className="border border-black p-1"></td>
+                          <td className="border border-black p-1"></td>
+                          <td className="border border-black p-1"></td>
+                          <td className="border border-black p-1"></td>
+                          <td className="border border-black p-1"></td>
+                        </tr>
+                      );
+                    } else if (idx === 13) {
+                      // RINGGIT Row (Bil 14)
+                      return (
+                        <tr key={idx} className="h-8 font-bold">
+                          <td className="border border-black p-1">{idx + 1}</td>
+                          <td className="border border-black p-1"></td>
+                          <td className="border border-black p-1"></td>
+                          <td className="border border-black p-1 text-left pl-4 uppercase" colSpan={38}>
+                            RINGGIT : {numberToMalayWords(grandTotalElaun)}
+                          </td>
+                          <td className="border border-black p-1">{grandTotalElaun.toFixed(2)}</td>
+                          <td className="border border-black p-1"></td>
+                          <td className="border border-black p-1 font-bold">{grandTotalElaun.toFixed(2)}</td>
+                          <td className="border border-black p-1"></td>
+                        </tr>
+                      );
+                    } else {
+                      // Final Total Row (Bil 15)
+                      return (
+                        <tr key={idx} className="h-8 font-bold">
+                          <td className="border border-black p-1">{idx + 1}</td>
+                          <td className="border border-black p-1"></td>
+                          <td className="border border-black p-1"></td>
+                          <td className="border border-black p-1"></td>
+                          {Array(31).fill(0).map((_, i) => {
+                            let dayTotal = 0;
+                            selectedNoBadanList.forEach(nb => {
+                              const { dailyHours } = getPersonnelDailyHours(nb);
+                              dayTotal += dailyHours[i] || 0;
+                            });
+                            return <td key={i} className="border border-black p-0.5">{dayTotal || ''}</td>;
+                          })}
+                          <td className="border border-black p-1" colSpan={2}>{grandTotalHoursWorked || ''}</td>
+                          <td className="border border-black p-1">{grandTotalCappedHours || ''}</td>
+                          <td className="border border-black p-1"></td>
+                          <td className="border border-black p-1"></td>
+                          <td className="border border-black p-1"></td>
+                          <td className="border border-black p-1"></td>
+                          <td className="border border-black p-1"></td>
+                          <td className="border border-black p-1 font-bold">{grandTotalElaun.toFixed(2)}</td>
+                          <td className="border border-black p-1"></td>
+                        </tr>
+                      );
+                    }
+                  })}
+                </tbody>
+              </table>
+              <datalist id="personnel-list">
+                {processedData.personal
+                  .filter(p => {
+                    const num = String(p.name).replace(/[^0-9]/g, '');
+                    return !selectedNoBadanList.includes(num);
+                  })
+                  .map((p, i) => {
+                    const num = String(p.name).replace(/[^0-9]/g, '');
+                    // Show name and district in the label to help user identify the person
+                    return num ? <option key={i} value={num}>{p.name} ({p.latestDistrict})</option> : null;
+                  })}
+              </datalist>
+            </div>
+
+            <div className="mt-2 text-[9px] font-bold uppercase">
+              JUMLAH JAM KEDATANGAN BAGI TIAP-TIAP KAWAD
+            </div>
+
+            <div className="mt-8 grid grid-cols-2 gap-8 text-[10px]">
+              <div className="space-y-12">
+                <div className="font-bold">(Pegawai Simpanan yang diwartakan atau Inspektor)</div>
+                <div className="pt-8 border-t border-black w-64"></div>
+              </div>
+              <div className="space-y-4">
+                <div className="font-bold">PERINGATAN A : Elaun belania latihan yang terbanyak dalam tiap-tiap bulan ialah mengenai latihan/tugas 48 jam</div>
+                <div className="font-bold">PERINGATAN B : Elaun kenderaan ialah satu daripada berikut:</div>
+                <div className="grid grid-cols-3 gap-2">
+                  <div>(a) Elaun kenderaan (E.K) tetap basikal</div>
+                  <div>(b) Elaun Hitungan Batu yang dibenarkan atau</div>
+                  <div>(c) Elaun ganti</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Report 2: Voucher */}
+        <div className="print-page-container pt-12 border-t-2 border-dashed border-gray-300 print:border-none">
+          <div className="flex justify-between items-start mb-6">
+            <div className="text-xs font-bold underline">SSPDRM MELAKA - BAUCER NO :</div>
+            <div className="text-xs font-bold">SPDRM MELAKA BR.NO: ...........................</div>
+          </div>
+
+          <table className="w-full border-collapse border border-black text-xs text-center font-bold">
+            <thead>
+              <tr className="bg-gray-50">
+                <th className="border border-black p-2 w-12">BIL</th>
+                <th className="border border-black p-2 w-32">NO KOD PVR</th>
+                <th className="border border-black p-2">NAMA</th>
+                <th className="border border-black p-2 w-40">NO AKAUN BANK</th>
+                <th className="border border-black p-2 w-48">NAMA BANK</th>
+                <th className="border border-black p-2 w-32">NO TELEFON</th>
+                <th className="border border-black p-2 w-32">JUMLAH ( RM )</th>
+              </tr>
+            </thead>
+            <tbody>
+              {selectedNoBadanList.map((noBadan, idx) => {
+                const { name, rank, totalHours } = getPersonnelDailyHours(noBadan);
+                const rate = getRate(rank);
+                const cappedHours = Math.min(totalHours, 48);
+                const allowance = cappedHours * rate;
+                const targetNo = noBadan.replace(/[^0-9]/g, '');
+                
+                // Find extra info from voucherData (the other sheet)
+                const extra = targetNo ? (voucherData.find(v => {
+                  const vNo = String(v['No Badan'] || v['NO BADAN'] || v['NO KOD PVR'] || '').replace(/[^0-9]/g, '');
+                  return vNo === targetNo;
+                }) || {}) : {};
+
+                return (
+                  <tr key={idx} className="h-10">
+                    <td className="border border-black p-2">{idx + 1}</td>
+                    <td className="border border-black p-2">{extra['NO KOD PVR'] || ''}</td>
+                    <td className="border border-black p-2 text-center">{name}</td>
+                    <td className="border border-black p-2">{extra['NO AKAUN BANK'] || ''}</td>
+                    <td className="border border-black p-2">{extra['NAMA BANK'] || ''}</td>
+                    <td className="border border-black p-2">{extra['NO TELEFON'] || ''}</td>
+                    <td className="border border-black p-2">
+                      {noBadan ? `RM ${allowance.toFixed(2)}` : ''}
+                    </td>
+                  </tr>
+                );
+              })}
+              <tr className="h-10 font-bold bg-gray-50">
+                <td className="border border-black p-2 text-right pr-4" colSpan={6}>JUMLAH</td>
+                <td className="border border-black p-2">RM {grandTotalElaun.toFixed(2)}</td>
+              </tr>
+            </tbody>
+          </table>
+
+          <div className="mt-16 grid grid-cols-2 gap-12 text-xs font-bold">
+            <div className="space-y-12">
+              <div>Tandatangan Pegawai Bahagian & Cop</div>
+              <div className="pt-4 border-t border-black border-dotted w-full"></div>
+            </div>
+            <div className="space-y-12">
+              <div>Tandatangan Komandan/Ejutan & Cop</div>
+              <div className="pt-4 border-t border-black border-dotted w-full"></div>
+            </div>
+          </div>
+          
+        </div>
+      </div>
+    );
+  };
+
   return (
     <div className="min-h-screen bg-gray-100 p-4 sm:p-8 print:p-0 print:bg-white">
       {/* Controls - Hidden when printing */}
@@ -1130,7 +1727,7 @@ export default function App() {
               >
                 <option value="ALL">SEMUA ANGGOTA</option>
                 {processedData.personal.map(p => (
-                  <option key={p.name} value={p.name}>{p.name}</option>
+                  <option key={p.name} value={p.name}>{p.name} ({p.latestDistrict})</option>
                 ))}
               </select>
             )}
@@ -1211,6 +1808,17 @@ export default function App() {
               Jam Penugasan (Tahunan)
             </button>
           )}
+          <button
+            onClick={() => setActiveTab('ALLOWANCE')}
+            className={`flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-t-lg transition-colors ${
+              activeTab === 'ALLOWANCE' 
+                ? 'bg-blue-50 text-blue-700 border-b-2 border-blue-700' 
+                : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
+            }`}
+          >
+            <Download className="w-4 h-4" />
+            Paysheet (backup data)
+          </button>
         </div>
       </div>
 
@@ -1293,6 +1901,38 @@ export default function App() {
                 </div>
               </div>
               {renderPersonalTable()}
+            </div>
+          )}
+
+          {(printMode === 'ALL' || activeTab === 'ALLOWANCE') && (
+            <div className={`print-page-container ${printMode === 'ALL' ? 'html2pdf__page-break' : ''}`}>
+              {/* Voucher Data Configuration hidden as requested */}
+              {/*
+              {activeTab === 'ALLOWANCE' && (
+                <div className="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-lg print:hidden">
+                  <h3 className="text-sm font-bold text-blue-800 mb-2">Voucher Data Configuration</h3>
+                  <div className="flex gap-3">
+                    <input 
+                      type="text" 
+                      value={voucherSheetId}
+                      onChange={(e) => setVoucherSheetId(e.target.value)}
+                      placeholder="Enter Voucher Sheet ID (for Bank/Phone info)"
+                      className="flex-1 px-3 py-2 text-sm border border-blue-300 rounded outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                    <button 
+                      onClick={() => fetchVoucherData(voucherSheetId)}
+                      className="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded hover:bg-blue-700"
+                    >
+                      Connect
+                    </button>
+                  </div>
+                  <p className="text-[10px] text-blue-600 mt-2">
+                    * Enter the ID of the Google Sheet containing columns: NO KOD PVR, NO AKAUN BANK, NAMA BANK, NO TELEFON.
+                  </p>
+                </div>
+              )}
+              */}
+              {renderAllowanceTable()}
             </div>
           )}
         </div>
