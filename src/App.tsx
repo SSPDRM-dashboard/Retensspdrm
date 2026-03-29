@@ -57,7 +57,7 @@ const years = [2024, 2025, 2026, 2027, 2028];
 // Example: "1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms"
 const GOOGLE_SHEET_ID: string = "1mD8nfxGetTY1Xi4o4d471eCFOCDmbEJ_ZclBguqsnMI";
 
-type TabType = 'DAILY' | 'WEEKLY' | 'RANK' | 'PERSONAL';
+type TabType = 'MONTHLY' | 'PERSONAL';
 
 export default function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -70,7 +70,7 @@ export default function App() {
   const [loginError, setLoginError] = useState('');
   const [isLoggingIn, setIsLoggingIn] = useState(false);
 
-  const [activeTab, setActiveTab] = useState<TabType>('DAILY');
+  const [activeTab, setActiveTab] = useState<TabType>('MONTHLY');
   const [selectedMonth, setSelectedMonth] = useState('JANUARY');
   const [selectedYear, setSelectedYear] = useState(2026);
   const [selectedDistrict, setSelectedDistrict] = useState('ALOR GAJAH');
@@ -111,11 +111,14 @@ export default function App() {
         const tabStr = (savedTab || '').toUpperCase();
         let initialTab: TabType = 'PERSONAL';
         
-        if (tabStr.includes('T1') || tabStr.includes('WEEKLY')) initialTab = 'WEEKLY';
-        else if (tabStr.includes('T2') || tabStr.includes('DAILY')) initialTab = 'DAILY';
-        else if (tabStr.includes('T3') || tabStr.includes('RANK')) initialTab = 'RANK';
-        else if (tabStr.includes('T4') || tabStr.includes('PERSONAL')) initialTab = 'PERSONAL';
-        else if (!tabStr) initialTab = 'PERSONAL';
+        if (tabStr.includes('T1') || tabStr.includes('T2') || tabStr.includes('T3') || 
+            tabStr.includes('WEEKLY') || tabStr.includes('DAILY') || tabStr.includes('RANK')) {
+          initialTab = 'MONTHLY';
+        } else if (tabStr.includes('T4') || tabStr.includes('PERSONAL')) {
+          initialTab = 'PERSONAL';
+        } else if (!tabStr) {
+          initialTab = 'PERSONAL';
+        }
         
         setActiveTab(initialTab);
         if (savedName) setSelectedPerson(savedName);
@@ -199,16 +202,19 @@ export default function App() {
               const normalizedTab = defaultTab.toUpperCase();
               let initialTab: TabType = 'PERSONAL';
               
-              if (normalizedTab.includes('T1') || normalizedTab.includes('WEEKLY')) initialTab = 'WEEKLY';
-              else if (normalizedTab.includes('T2') || normalizedTab.includes('DAILY')) initialTab = 'DAILY';
-              else if (normalizedTab.includes('T3') || normalizedTab.includes('RANK')) initialTab = 'RANK';
-              else if (normalizedTab.includes('T4') || normalizedTab.includes('PERSONAL')) initialTab = 'PERSONAL';
-              else if (!normalizedTab) initialTab = 'PERSONAL';
+              if (normalizedTab.includes('T1') || normalizedTab.includes('T2') || normalizedTab.includes('T3') || 
+                  normalizedTab.includes('WEEKLY') || normalizedTab.includes('DAILY') || normalizedTab.includes('RANK')) {
+                initialTab = 'MONTHLY';
+              } else if (normalizedTab.includes('T4') || normalizedTab.includes('PERSONAL')) {
+                initialTab = 'PERSONAL';
+              } else if (!normalizedTab) {
+                initialTab = 'PERSONAL';
+              }
               
               setActiveTab(initialTab);
               if (name) setSelectedPerson(name);
             } else {
-              setActiveTab('DAILY');
+              setActiveTab('MONTHLY');
               setSelectedPerson('ALL');
             }
             
@@ -1175,43 +1181,21 @@ export default function App() {
 
         {/* Tabs */}
         <div className="flex gap-2 mt-6 border-b border-gray-200 pb-px">
-          {(userRole.toLowerCase() === 'admin' || userTab.toUpperCase().includes('T1') || userTab.toUpperCase().includes('WEEKLY') || !userTab || userTab.trim() === '') && (
+          {(userRole.toLowerCase() === 'admin' || 
+            userTab.toUpperCase().includes('T1') || userTab.toUpperCase().includes('WEEKLY') ||
+            userTab.toUpperCase().includes('T2') || userTab.toUpperCase().includes('DAILY') ||
+            userTab.toUpperCase().includes('T3') || userTab.toUpperCase().includes('RANK') ||
+            !userTab || userTab.trim() === '') && (
             <button
-              onClick={() => setActiveTab('WEEKLY')}
+              onClick={() => setActiveTab('MONTHLY')}
               className={`flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-t-lg transition-colors ${
-                activeTab === 'WEEKLY' 
-                  ? 'bg-blue-50 text-blue-700 border-b-2 border-blue-700' 
-                  : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
-              }`}
-            >
-              <CalendarRange className="w-4 h-4" />
-              Mingguan (Weekly)
-            </button>
-          )}
-          {(userRole.toLowerCase() === 'admin' || userTab.toUpperCase().includes('T2') || userTab.toUpperCase().includes('DAILY') || !userTab || userTab.trim() === '') && (
-            <button
-              onClick={() => setActiveTab('DAILY')}
-              className={`flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-t-lg transition-colors ${
-                activeTab === 'DAILY' 
+                activeTab === 'MONTHLY' 
                   ? 'bg-blue-50 text-blue-700 border-b-2 border-blue-700' 
                   : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
               }`}
             >
               <CalendarDays className="w-4 h-4" />
-              Bulanan (Monthly)
-            </button>
-          )}
-          {(userRole.toLowerCase() === 'admin' || userTab.toUpperCase().includes('T3') || userTab.toUpperCase().includes('RANK') || !userTab || userTab.trim() === '') && (
-            <button
-              onClick={() => setActiveTab('RANK')}
-              className={`flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-t-lg transition-colors ${
-                activeTab === 'RANK' 
-                  ? 'bg-blue-50 text-blue-700 border-b-2 border-blue-700' 
-                  : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
-              }`}
-            >
-              <Users className="w-4 h-4" />
-              Pangkat (Rank)
+              Laporan Bulanan (Monthly Report)
             </button>
           )}
           {(userRole.toLowerCase() === 'admin' || userTab.toUpperCase().includes('T4') || userTab.toUpperCase().includes('PERSONAL') || !userTab || userTab.trim() === '') && (
@@ -1224,7 +1208,7 @@ export default function App() {
               }`}
             >
               <User className="w-4 h-4" />
-              Tahunan (Yearly)
+              Jam Penugasan (Tahunan)
             </button>
           )}
         </div>
@@ -1245,57 +1229,51 @@ export default function App() {
         
         {/* Data Tables */}
         <div className="w-full overflow-x-auto">
-          {(printMode === 'ALL' || activeTab === 'DAILY') && (
-            <div className={`print-page-container ${printMode === 'ALL' ? 'html2pdf__page-break' : ''}`}>
-              <div className="text-center mb-6">
-                <h2 className="text-xl sm:text-2xl font-bold uppercase tracking-wide text-gray-900">
-                  SUKARELAWAN POLIS DIRAJA MALAYSIA KONTINJEN MELAKA
-                </h2>
-                <div className="text-sm sm:text-base font-semibold mt-1 uppercase">
-                  BAHAGIAN PENTADBIRAN <span className="ml-2">{selectedDistrict}</span>
-                </div>
-                <div className="text-sm sm:text-base font-semibold mt-1">
-                  PROGRAM / AKTIVITI PASUKAN {printMode === 'ALL' ? '(HARIAN)' : ''}
-                </div>
-                <div className="text-sm sm:text-base font-semibold mt-1 uppercase">
-                  BULAN : <span className="ml-2">{selectedMonth}</span> <span className="ml-4">{selectedYear}</span>
-                </div>
-              </div>
-              {renderDailyTable()}
-            </div>
-          )}
-
-          {(printMode === 'ALL' || activeTab === 'WEEKLY') && (
-            <div className={`print-page-container ${printMode === 'ALL' ? 'html2pdf__page-break' : ''}`}>
-              <div className="text-center mb-6">
-                <h2 className="text-xl sm:text-2xl font-bold uppercase tracking-wide text-gray-900">
-                  SUKARELAWAN POLIS DIRAJA MALAYSIA KONTINJEN MELAKA
-                </h2>
-                <div className="text-sm sm:text-base font-semibold mt-1 uppercase">
-                  BAHAGIAN PENTADBIRAN <span className="ml-2">{selectedDistrict}</span>
-                </div>
-                <div className="text-sm sm:text-base font-semibold mt-1">
-                  PROGRAM / AKTIVITI PASUKAN {printMode === 'ALL' ? '(MINGGUAN)' : ''}
-                </div>
-                <div className="text-sm sm:text-base font-semibold mt-1 uppercase">
-                  BULAN : <span className="ml-2">{selectedMonth}</span> <span className="ml-4">{selectedYear}</span>
-                </div>
-              </div>
-              {renderWeeklyTable()}
-            </div>
-          )}
-
-          {(printMode === 'ALL' || activeTab === 'RANK') && (
-            <div className={`print-page-container ${printMode === 'ALL' ? 'html2pdf__page-break' : ''}`}>
-              {printMode === 'ALL' && (
+          {(printMode === 'ALL' || activeTab === 'MONTHLY') && (
+            <>
+              {/* Bulanan (Monthly) */}
+              <div className={`print-page-container mb-12 ${printMode === 'ALL' ? 'html2pdf__page-break' : ''}`}>
                 <div className="text-center mb-6">
                   <h2 className="text-xl sm:text-2xl font-bold uppercase tracking-wide text-gray-900">
-                    KEDUDUKAN (RANK)
+                    SUKARELAWAN POLIS DIRAJA MALAYSIA KONTINJEN MELAKA
                   </h2>
+                  <div className="text-sm sm:text-base font-semibold mt-1 uppercase">
+                    BAHAGIAN PENTADBIRAN <span className="ml-2">{selectedDistrict}</span>
+                  </div>
+                  <div className="text-sm sm:text-base font-semibold mt-1">
+                    PROGRAM / AKTIVITI PASUKAN (BULANAN)
+                  </div>
+                  <div className="text-sm sm:text-base font-semibold mt-1 uppercase">
+                    BULAN : <span className="ml-2">{selectedMonth}</span> <span className="ml-4">{selectedYear}</span>
+                  </div>
                 </div>
-              )}
-              {renderRankTable()}
-            </div>
+                {renderDailyTable()}
+              </div>
+
+              {/* Mingguan (Weekly) */}
+              <div className={`print-page-container mb-12 ${printMode === 'ALL' ? 'html2pdf__page-break' : ''}`}>
+                <div className="text-center mb-6">
+                  <h2 className="text-xl sm:text-2xl font-bold uppercase tracking-wide text-gray-900">
+                    SUKARELAWAN POLIS DIRAJA MALAYSIA KONTINJEN MELAKA
+                  </h2>
+                  <div className="text-sm sm:text-base font-semibold mt-1 uppercase">
+                    BAHAGIAN PENTADBIRAN <span className="ml-2">{selectedDistrict}</span>
+                  </div>
+                  <div className="text-sm sm:text-base font-semibold mt-1">
+                    PROGRAM / AKTIVITI PASUKAN (MINGGUAN)
+                  </div>
+                  <div className="text-sm sm:text-base font-semibold mt-1 uppercase">
+                    BULAN : <span className="ml-2">{selectedMonth}</span> <span className="ml-4">{selectedYear}</span>
+                  </div>
+                </div>
+                {renderWeeklyTable()}
+              </div>
+
+              {/* Pangkat (Rank) */}
+              <div className={`print-page-container mb-12 ${printMode === 'ALL' ? 'html2pdf__page-break' : ''}`}>
+                {renderRankTable()}
+              </div>
+            </>
           )}
 
           {(printMode === 'ALL' || activeTab === 'PERSONAL') && (
