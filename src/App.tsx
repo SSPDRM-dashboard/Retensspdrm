@@ -1488,41 +1488,11 @@ export default function App() {
     let grandTotalPenugasan = 0;
 
     return (
-      <div className="w-full space-y-12">
-        {/* DATA READY panel hidden as requested */}
-        {/*
-        <div className="bg-blue-50 p-3 rounded-lg border border-blue-200 flex justify-between items-center print:hidden">
-          <div className="flex items-center gap-4">
-            <div className="flex items-center gap-2">
-              <div className={`w-2 h-2 rounded-full ${rawData.length > 0 ? 'bg-green-500' : 'bg-red-500'}`}></div>
-              <span className="text-xs font-bold text-blue-800 uppercase tracking-wider">
-                {rawData.length > 0 ? `DATA READY: ${rawData.length} ROWS` : 'NO DATA LOADED - CHECK SHEET ID'}
-              </span>
-            </div>
-            {processedData.personal.length > 0 && (
-              <span className="text-xs text-blue-600 font-bold uppercase">
-                | {processedData.personal.length} PERSONNEL FOUND IN {selectedYear}
-              </span>
-            )}
-            <span className="text-xs text-blue-600 font-bold uppercase">
-              | DISTRICT: {selectedDistrict}
-            </span>
-          </div>
-          <div className="flex items-center gap-2">
-            <button 
-              onClick={() => fetchSheetData(GOOGLE_SHEET_ID, selectedYear)}
-              className="text-[10px] bg-blue-600 text-white px-3 py-1.5 rounded font-bold hover:bg-blue-700 flex items-center gap-1 transition-colors"
-            >
-              <RefreshCw size={12} className={isLoading ? 'animate-spin' : ''} />
-              REFRESH DATA
-            </button>
-          </div>
-        </div>
-        */}
+      <div className="w-full">
         {/* Report 1: Attendance & Allowance */}
-        <div className="relative">
+        <div className="print-page-container relative pb-8">
           <div className="relative z-10">
-            <div className="flex justify-end items-start mb-4">
+            <div className="flex justify-end items-start mb-2">
               <div className="text-right text-[10px] font-bold">
                 SPDRM MELAKA BR.NO............<br/>
                 LAMPIRAN 'A1'<br/>
@@ -1531,12 +1501,12 @@ export default function App() {
               </div>
             </div>
 
-            <div className="text-center mb-6 relative">
+            <div className="text-center mb-2 relative">
               <h2 className="text-xl font-bold uppercase">PASUKAN SUKARELAWAN SIMPANAN POLIS</h2>
               <div className="text-sm font-bold mt-1">
                 Daftar Kedatangan dan Jadual Elaun bagi Bulan: <span className="border-b border-black px-4">{selectedMonth} {selectedYear}</span>
               </div>
-              <div className="text-sm font-bold mt-4 flex justify-center items-center gap-8">
+              <div className="text-sm font-bold mt-2 flex justify-center items-center gap-8">
                 <span className="text-base">Nama Pasukan :</span>
                 <span className="text-2xl font-black tracking-widest">{selectedDistrict}</span>
               </div>
@@ -1714,7 +1684,7 @@ export default function App() {
             <div className="mt-4 grid grid-cols-2 gap-8 text-[10px]">
               <div className="space-y-8">
                 <div className="font-bold">(Pegawai Simpanan yang diwartakan atau Inspektor)</div>
-                <div className="pt-6 border-t border-black w-64"></div>
+                <div className="pt-6 w-64"></div>
               </div>
               <div className="space-y-2">
                 <div className="font-bold">PERINGATAN A : Elaun belania latihan yang terbanyak dalam tiap-tiap bulan ialah mengenai latihan/tugas 48 jam</div>
@@ -1730,7 +1700,7 @@ export default function App() {
         </div>
 
         {/* Report 2: Voucher */}
-        <div className="pt-12 border-t-2 border-dashed border-gray-300 print:border-none">
+        <div className="print-page-container page-break-before pt-[188px] border-t-2 border-dashed border-gray-300 print:border-none">
           <div className="flex justify-between items-start mb-6">
             <div className="text-xs font-bold underline">SSPDRM MELAKA - BAUCER NO :</div>
             <div className="text-xs font-bold">SPDRM MELAKA BR.NO: ...........................</div>
@@ -1738,7 +1708,7 @@ export default function App() {
 
           <table className="w-full border-collapse border border-black text-xs text-center font-bold">
             <thead>
-              <tr className="bg-gray-50">
+              <tr className="bg-gray-50 h-[30px]">
                 <th className="border border-black p-2 w-12">BIL</th>
                 <th className="border border-black p-2 w-32">NO KOD PVR</th>
                 <th className="border border-black p-2">NAMA</th>
@@ -1763,7 +1733,7 @@ export default function App() {
                 }) || {}) : {};
 
                 return (
-                  <tr key={idx} className="h-8">
+                  <tr key={idx} className="h-[30px]">
                     <td className="border border-black p-1">{idx + 1}</td>
                     <td className="border border-black p-2">{extra['NO KOD PVR'] || ''}</td>
                     <td className="border border-black p-2 text-center">{name}</td>
@@ -1776,7 +1746,7 @@ export default function App() {
                   </tr>
                 );
               })}
-              <tr className="h-8 font-bold bg-gray-50">
+              <tr className="h-[30px] font-bold bg-gray-50">
                 <td className="border border-black p-1 text-right pr-4" colSpan={6}>JUMLAH</td>
                 <td className="border border-black p-1">RM {grandTotalElaun.toFixed(2)}</td>
               </tr>
@@ -1784,13 +1754,13 @@ export default function App() {
           </table>
 
           <div className="mt-8 grid grid-cols-2 gap-12 text-xs font-bold">
-            <div className="space-y-8">
+            <div>
               <div>Tandatangan Pegawai Bahagian & Cop</div>
-              <div className="pt-4 border-t border-black border-dotted w-full"></div>
+              <div className="mt-[120px] border-t border-black border-dotted w-full"></div>
             </div>
-            <div className="space-y-8">
+            <div>
               <div>Tandatangan Komandan/Ejutan & Cop</div>
-              <div className="pt-4 border-t border-black border-dotted w-full"></div>
+              <div className="mt-[120px] border-t border-black border-dotted w-full"></div>
             </div>
           </div>
           
