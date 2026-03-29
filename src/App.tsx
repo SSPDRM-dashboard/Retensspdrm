@@ -57,7 +57,7 @@ const years = [2024, 2025, 2026, 2027, 2028];
 // Example: "1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms"
 const GOOGLE_SHEET_ID: string = "1mD8nfxGetTY1Xi4o4d471eCFOCDmbEJ_ZclBguqsnMI";
 
-type TabType = 'MONTHLY' | 'PERSONAL' | 'ALLOWANCE';
+type TabType = 'MONTHLY' | 'PERSONAL' | 'ALLOWANCE' | 'ALLOWANCE_LIVE';
 
 export default function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -76,8 +76,10 @@ export default function App() {
   const [selectedDistrict, setSelectedDistrict] = useState('ALOR GAJAH');
   const [selectedPerson, setSelectedPerson] = useState('ALL');
   const [selectedNoBadanList, setSelectedNoBadanList] = useState<string[]>(Array(10).fill(''));
-  const [voucherSheetId, setVoucherSheetId] = useState('1C7eChL2vbKsk6Yni5rklpx4lBRYQc2kI81V2vGixEa8');
   const [voucherData, setVoucherData] = useState<any[]>([]);
+  const [voucherDataLive, setVoucherDataLive] = useState<any[]>([]);
+  const [attendanceDataLive, setAttendanceDataLive] = useState<any[]>([]);
+  const [liveDataStatus, setLiveDataStatus] = useState<string>('Initializing...');
 
   const [printMode, setPrintMode] = useState<'CURRENT' | 'ALL'>('CURRENT');
   const [isGeneratingPDF, setIsGeneratingPDF] = useState(false);
@@ -98,18 +100,6 @@ export default function App() {
     const savedName = localStorage.getItem('pdrm_user_name');
     const savedTab = localStorage.getItem('pdrm_user_tab');
     const savedDistrict = localStorage.getItem('pdrm_user_district');
-    const savedNoBadan = localStorage.getItem('pdrm_selected_nobadan');
-    const savedVoucherId = localStorage.getItem('pdrm_voucher_sheet_id');
-
-    if (savedNoBadan) {
-      const parsed = JSON.parse(savedNoBadan);
-      if (Array.isArray(parsed)) {
-        const newList = [...parsed];
-        while (newList.length < 10) newList.push('');
-        setSelectedNoBadanList(newList.slice(0, 10));
-      }
-    }
-    if (savedVoucherId) setVoucherSheetId(savedVoucherId);
 
     if (savedAuth === 'true') {
       setIsAuthenticated(true);
@@ -137,21 +127,14 @@ export default function App() {
         }
         
         setActiveTab(initialTab);
-        if (savedName) setSelectedPerson(savedName);
       }
     }
   }, []);
 
   useEffect(() => {
-    localStorage.setItem('pdrm_selected_nobadan', JSON.stringify(selectedNoBadanList));
-  }, [selectedNoBadanList]);
-
-  useEffect(() => {
-    localStorage.setItem('pdrm_voucher_sheet_id', voucherSheetId);
-    if (voucherSheetId) {
-      fetchVoucherData(voucherSheetId);
-    }
-  }, [voucherSheetId]);
+    const defaultVoucherId = '1C7eChL2vbKsk6Yni5rklpx4lBRYQc2kI81V2vGixEa8';
+    fetchVoucherData(defaultVoucherId);
+  }, []);
 
   const fetchVoucherData = async (input: string) => {
     if (!input) return;
@@ -197,12 +180,12 @@ export default function App() {
           if (rows && rows.length > 0) {
             const mapped = rows.map((row, index) => {
               // Skip header rows (usually first 1-2 rows)
-              if (index < 1) return null;
+              if (index < 2) return null;
               if (!row || row.length < 4) return null;
               
               // Columns D, F, H, J are indices 3, 5, 7, 9
               const noBadan = [row[3], row[5], row[7], row[9]].filter(Boolean).join(' ');
-              if (!noBadan) return null;
+              if (!noBadan || noBadan.toUpperCase().includes('NOMBOR BADAN') || noBadan.toUpperCase().includes('NAMA')) return null;
 
               return {
                 'NO KOD PVR': row[40] || '',
@@ -221,6 +204,90 @@ export default function App() {
       console.error("Voucher fetch failed", e);
     }
   };
+
+  const fetchVoucherDataLive = async () => {
+    setLiveDataStatus('Fetching...');
+    
+    // 1. Fetch Voucher Metadata (Bank info, etc.)
+    const voucherId = '1C7eChL2vbKsk6Yni5rklpx4lBRYQc2kI81V2vGixEa8';
+    const voucherGid = '761351772';
+    const voucherUrl = `https://docs.google.com/spreadsheets/d/${voucherId}/export?format=csv&gid=${voucherGid}`;
+    
+    // 2. Fetch Attendance/Hours Data (Page 1 Elaun)
+    const attendanceId = '1-suQYCmqWY38qlcniuqrNBLJQxAtrbbB5MWIW61iTP4';
+    const attendanceGid = '1963976228';
+    const attendanceUrl = `https://docs.google.com/spreadsheets/d/${attendanceId}/export?format=csv&gid=${attendanceGid}`;
+    
+    try {
+      // Fetch Voucher Metadata
+      const vResponse = await fetch(voucherUrl, { mode: 'cors' });
+      if (vResponse.ok) {
+        const vCsv = await vResponse.text();
+        if (!vCsv.includes('<!DOCTYPE html>')) {
+          Papa.parse(vCsv, {
+            header: false,
+            skipEmptyLines: true,
+            complete: (results) => {
+              const rows = results.data as any[][];
+              const mapped = rows.map((row, index) => {
+                if (index < 2) return null;
+                if (!row || row.length < 4) return null;
+                const noBadan = [row[3], row[5], row[7], row[9]].filter(Boolean).join(' ');
+                if (!noBadan || noBadan.toUpperCase().includes('NOMBOR BADAN') || noBadan.toUpperCase().includes('NAMA')) return null;
+                return {
+                  'NO KOD PVR': row[40] || '',
+                  'NO AKAUN BANK': row[22] || '',
+                  'NAMA BANK': row[21] || '',
+                  'NO TELEFON': row[14] || '',
+                  'No Badan': noBadan,
+                  'District': row[1] || '' 
+                };
+              }).filter(Boolean);
+              setVoucherDataLive(mapped);
+            }
+          });
+        }
+      }
+
+      // Fetch Attendance Data
+      const aResponse = await fetch(attendanceUrl, { mode: 'cors' });
+      if (aResponse.ok) {
+        const aCsv = await aResponse.text();
+        if (!aCsv.includes('<!DOCTYPE html>')) {
+          Papa.parse(aCsv, {
+            header: false,
+            skipEmptyLines: true,
+            complete: (results) => {
+              const rows = results.data as any[][];
+              const mapped = rows.map((row, index) => {
+                if (index < 2) return null;
+                if (!row || row.length < 4) return null;
+                const noBadan = [row[3], row[5], row[7], row[9]].filter(Boolean).join(' ');
+                if (!noBadan || noBadan.toUpperCase().includes('NOMBOR BADAN') || noBadan.toUpperCase().includes('NAMA')) return null;
+                return {
+                  'No Badan': noBadan,
+                  'Duty Date': row[15] || '',
+                  'Hours': row[18] || '',
+                  'District': row[1] || '' 
+                };
+              }).filter(Boolean);
+              setAttendanceDataLive(mapped);
+              setLiveDataStatus(`Loaded ${mapped.length} records`);
+            }
+          });
+        }
+      } else {
+        setLiveDataStatus(`Fetch failed: ${aResponse.status}`);
+      }
+    } catch (e) {
+      setLiveDataStatus(`Error: Failed to fetch.`);
+      console.error("Live Data fetch failed", e);
+    }
+  };
+
+  useEffect(() => {
+    fetchVoucherDataLive();
+  }, []);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -308,7 +375,6 @@ export default function App() {
               }
               
               setActiveTab(initialTab);
-              if (name) setSelectedPerson(name);
             } else {
               setActiveTab('MONTHLY');
               setSelectedPerson('ALL');
@@ -338,11 +404,14 @@ export default function App() {
     setLoggedInName('');
     setUserTab('');
     setUserDistrict('');
+    setSelectedPerson('ALL');
+    setSelectedNoBadanList(Array(10).fill(''));
     localStorage.removeItem('pdrm_auth');
     localStorage.removeItem('pdrm_user_role');
     localStorage.removeItem('pdrm_user_name');
     localStorage.removeItem('pdrm_user_tab');
     localStorage.removeItem('pdrm_user_district');
+    localStorage.removeItem('pdrm_selected_nobadan');
   };
 
   // Fetch data when year changes
@@ -1191,7 +1260,8 @@ export default function App() {
     );
   };
 
-  const renderAllowanceTable = () => {
+  const renderAllowanceTable = (isLive: boolean = false) => {
+    const currentVoucherData = isLive ? voucherDataLive : voucherData;
     const daysInMonth = new Date(selectedYear, months.indexOf(selectedMonth) + 1, 0).getDate();
     const daysArray = Array.from({ length: 31 }, (_, i) => i + 1);
 
@@ -1201,10 +1271,96 @@ export default function App() {
       let name = '';
       let rank = '';
       
-      if (!noBadan || !rawData || rawData.length === 0) return { dailyHours, name, rank, totalHours: 0 };
-
       const normalize = (s: string) => String(s || '').replace(/[^0-9]/g, '');
       const targetNo = normalize(noBadan);
+
+      const isDistrictMatch = (rowDistrict: any, targetDistrict: string) => {
+        if (!rowDistrict || !targetDistrict) return false;
+        const s = String(rowDistrict).trim().toUpperCase();
+        const t = targetDistrict.trim().toUpperCase();
+        
+        if (s.includes(t) || t.includes(s)) return true;
+        
+        // Handle common abbreviations
+        if (t === 'ALOR GAJAH' && (s === 'AG' || s.includes('ALOR'))) return true;
+        if (t === 'MELAKA TENGAH' && (s === 'MT' || s.includes('TENGAH'))) return true;
+        if (t === 'JASIN' && (s === 'JS' || s.includes('JASIN'))) return true;
+        if (t === 'IPK SSPDRM' && (s === 'IPK')) return true;
+        
+        return false;
+      };
+
+      if (isLive) {
+        // Use attendanceDataLive for hours and dates
+        if (!attendanceDataLive || attendanceDataLive.length === 0) return { dailyHours, name, rank, totalHours: 0 };
+
+        // Find the person in processedData.personal first to get their name and rank (consistent with backup)
+        const person = processedData.personal.find(p => {
+          const pNoStr = String(p.name).replace(/[^0-9]/g, '');
+          if (!pNoStr) return false;
+          const pNo = parseInt(pNoStr, 10);
+          const tNo = parseInt(targetNo, 10);
+          return pNo === tNo;
+        });
+
+        if (person) {
+          name = person.name.replace(/[0-9]/g, '').trim();
+          rank = person.rank;
+        } else {
+          // Fallback to voucher data info if not in attendance sheet
+          const personInfo = voucherDataLive.find(v => normalize(v['No Badan']) === targetNo);
+          if (personInfo) {
+            name = personInfo['No Badan'].replace(/[0-9]/g, '').trim();
+          }
+        }
+
+        attendanceDataLive.forEach(row => {
+          if (normalize(row['No Badan']) !== targetNo) return;
+          
+          // Apply district filtering (consistent with backup)
+          if (!isDistrictMatch(row['District'], selectedDistrict)) return;
+          
+          const dateStr = String(row['Duty Date'] || '');
+          const hours = parseFloat(String(row['Hours'] || '0')) || 0;
+          
+          let rowYear = -1, rowMonth = -1, rowDay = -1;
+          const dateOnly = dateStr.split(' ')[0];
+          const parts = dateOnly.split(/[\/\-]/);
+          if (parts.length === 3) {
+            if (parts[0].length === 4) {
+              rowYear = parseInt(parts[0], 10);
+              rowMonth = parseInt(parts[1], 10) - 1;
+              rowDay = parseInt(parts[2], 10);
+            } else {
+              const p0 = parseInt(parts[0], 10);
+              const p1 = parseInt(parts[1], 10);
+              const p2 = parseInt(parts[2], 10);
+              if (p1 > 12) { rowMonth = p0 - 1; rowDay = p1; rowYear = p2; }
+              else { rowDay = p0; rowMonth = p1 - 1; rowYear = p2; }
+              if (rowYear < 100) rowYear += 2000;
+            }
+          } else {
+            const d = new Date(dateStr);
+            if (!isNaN(d.getTime())) {
+              rowYear = d.getFullYear();
+              rowMonth = d.getMonth();
+              rowDay = d.getDate();
+            }
+          }
+
+          if (rowYear === selectedYear && rowMonth === months.indexOf(selectedMonth)) {
+            if (rowDay >= 1 && rowDay <= 31) {
+              dailyHours[rowDay - 1] += hours;
+            }
+          }
+        });
+
+        const totalHours = dailyHours.reduce((a, b) => a + b, 0);
+        return { dailyHours, name, rank, totalHours };
+      }
+
+      // BACKUP DATA LOGIC (Original)
+      if (!noBadan || !rawData || rawData.length === 0) return { dailyHours, name, rank, totalHours: 0 };
 
       // Find the person in processedData.personal first to get their name
       const person = processedData.personal.find(p => {
@@ -1219,7 +1375,7 @@ export default function App() {
       
       name = person.name.replace(/[0-9]/g, '').trim();
       rank = person.rank;
-
+      
       // Find header row and indices (same logic as useMemo for consistency)
       let dateIdx = -1, distIdx = -1, hoursIdx = -1;
       let headerRowIndex = -1;
@@ -1238,22 +1394,6 @@ export default function App() {
           break;
         }
       }
-
-      const isDistrictMatch = (rowDistrict: any, targetDistrict: string) => {
-        if (!rowDistrict || !targetDistrict) return false;
-        const s = String(rowDistrict).trim().toUpperCase();
-        const t = targetDistrict.trim().toUpperCase();
-        
-        if (s.includes(t) || t.includes(s)) return true;
-        
-        // Handle common abbreviations
-        if (t === 'ALOR GAJAH' && (s === 'AG' || s.includes('ALOR'))) return true;
-        if (t === 'MELAKA TENGAH' && (s === 'MT' || s.includes('TENGAH'))) return true;
-        if (t === 'JASIN' && (s === 'JS' || s.includes('JASIN'))) return true;
-        if (t === 'IPK SSPDRM' && (s === 'IPK')) return true;
-        
-        return false;
-      };
 
       if (headerRowIndex === -1) return { dailyHours, name, rank, totalHours: 0 };
 
@@ -1277,13 +1417,10 @@ export default function App() {
             const p0 = parseInt(parts[0], 10);
             const p1 = parseInt(parts[1], 10);
             const p2 = parseInt(parts[2], 10);
-            if (p1 > 12) {
-              rowMonth = p0 - 1; rowDay = p1; rowYear = p2;
-            } else {
-              rowDay = p0; rowMonth = p1 - 1; rowYear = p2;
-            }
+            if (p1 > 12) { rowMonth = p0 - 1; rowDay = p1; rowYear = p2; }
+            else { rowDay = p0; rowMonth = p1 - 1; rowYear = p2; }
+            if (rowYear < 100) rowYear += 2000;
           }
-          if (rowYear < 100) rowYear += 2000;
         } else {
           const d = new Date(dateStr);
           if (!isNaN(d.getTime())) {
@@ -1292,12 +1429,11 @@ export default function App() {
             rowDay = d.getDate();
           }
         }
+
+        const hours = parseFloat(String(row[hoursIdx] || '0')) || 0;
         
         if (rowYear === selectedYear && months[rowMonth] === selectedMonth) {
-          const rowHours = parseFloat(String(row[hoursIdx])) || 0;
-          
           // Check if this person is in this row
-          // Columns D, F, H, J (indices 3, 5, 7, 9) are "NOMBOR BADAN DAN NAMA"
           const nameIndices = [3, 5, 7, 9];
           const isPresent = nameIndices.some((idx) => {
             if (idx >= row.length) return false;
@@ -1306,7 +1442,7 @@ export default function App() {
           });
 
           if (isPresent && rowDay >= 1 && rowDay <= 31) {
-            dailyHours[rowDay - 1] += rowHours;
+            dailyHours[rowDay - 1] += hours;
           }
         }
       });
@@ -1384,7 +1520,7 @@ export default function App() {
         </div>
         */}
         {/* Report 1: Attendance & Allowance */}
-        <div className="print-page-container relative">
+        <div className="relative">
           <div className="relative z-10">
             <div className="flex justify-end items-start mb-4">
               <div className="text-right text-[10px] font-bold">
@@ -1456,7 +1592,7 @@ export default function App() {
                       grandTotalPenugasan += kedatangan;
 
                       return (
-                        <tr key={idx} className="h-8">
+                        <tr key={idx} className="h-6">
                           <td className="border border-black p-1">{idx + 1}</td>
                           <td className="border border-black p-0">
                             <input 
@@ -1492,7 +1628,7 @@ export default function App() {
                     } else if (idx < 13) {
                       // Empty rows 11, 12, 13
                       return (
-                        <tr key={idx} className="h-8">
+                        <tr key={idx} className="h-6">
                           <td className="border border-black p-1">{idx + 1}</td>
                           <td className="border border-black p-1"></td>
                           <td className="border border-black p-1"></td>
@@ -1513,7 +1649,7 @@ export default function App() {
                     } else if (idx === 13) {
                       // RINGGIT Row (Bil 14)
                       return (
-                        <tr key={idx} className="h-8 font-bold">
+                        <tr key={idx} className="h-6 font-bold">
                           <td className="border border-black p-1">{idx + 1}</td>
                           <td className="border border-black p-1"></td>
                           <td className="border border-black p-1"></td>
@@ -1529,7 +1665,7 @@ export default function App() {
                     } else {
                       // Final Total Row (Bil 15)
                       return (
-                        <tr key={idx} className="h-8 font-bold">
+                        <tr key={idx} className="h-6 font-bold">
                           <td className="border border-black p-1">{idx + 1}</td>
                           <td className="border border-black p-1"></td>
                           <td className="border border-black p-1"></td>
@@ -1575,12 +1711,12 @@ export default function App() {
               JUMLAH JAM KEDATANGAN BAGI TIAP-TIAP KAWAD
             </div>
 
-            <div className="mt-8 grid grid-cols-2 gap-8 text-[10px]">
-              <div className="space-y-12">
+            <div className="mt-4 grid grid-cols-2 gap-8 text-[10px]">
+              <div className="space-y-8">
                 <div className="font-bold">(Pegawai Simpanan yang diwartakan atau Inspektor)</div>
-                <div className="pt-8 border-t border-black w-64"></div>
+                <div className="pt-6 border-t border-black w-64"></div>
               </div>
-              <div className="space-y-4">
+              <div className="space-y-2">
                 <div className="font-bold">PERINGATAN A : Elaun belania latihan yang terbanyak dalam tiap-tiap bulan ialah mengenai latihan/tugas 48 jam</div>
                 <div className="font-bold">PERINGATAN B : Elaun kenderaan ialah satu daripada berikut:</div>
                 <div className="grid grid-cols-3 gap-2">
@@ -1594,7 +1730,7 @@ export default function App() {
         </div>
 
         {/* Report 2: Voucher */}
-        <div className="print-page-container pt-12 border-t-2 border-dashed border-gray-300 print:border-none">
+        <div className="pt-12 border-t-2 border-dashed border-gray-300 print:border-none">
           <div className="flex justify-between items-start mb-6">
             <div className="text-xs font-bold underline">SSPDRM MELAKA - BAUCER NO :</div>
             <div className="text-xs font-bold">SPDRM MELAKA BR.NO: ...........................</div>
@@ -1620,15 +1756,15 @@ export default function App() {
                 const allowance = cappedHours * rate;
                 const targetNo = noBadan.replace(/[^0-9]/g, '');
                 
-                // Find extra info from voucherData (the other sheet)
-                const extra = targetNo ? (voucherData.find(v => {
+                // Find extra info from currentVoucherData (the other sheet)
+                const extra = targetNo ? (currentVoucherData.find(v => {
                   const vNo = String(v['No Badan'] || v['NO BADAN'] || v['NO KOD PVR'] || '').replace(/[^0-9]/g, '');
                   return vNo === targetNo;
                 }) || {}) : {};
 
                 return (
-                  <tr key={idx} className="h-10">
-                    <td className="border border-black p-2">{idx + 1}</td>
+                  <tr key={idx} className="h-8">
+                    <td className="border border-black p-1">{idx + 1}</td>
                     <td className="border border-black p-2">{extra['NO KOD PVR'] || ''}</td>
                     <td className="border border-black p-2 text-center">{name}</td>
                     <td className="border border-black p-2">{extra['NO AKAUN BANK'] || ''}</td>
@@ -1640,19 +1776,19 @@ export default function App() {
                   </tr>
                 );
               })}
-              <tr className="h-10 font-bold bg-gray-50">
-                <td className="border border-black p-2 text-right pr-4" colSpan={6}>JUMLAH</td>
-                <td className="border border-black p-2">RM {grandTotalElaun.toFixed(2)}</td>
+              <tr className="h-8 font-bold bg-gray-50">
+                <td className="border border-black p-1 text-right pr-4" colSpan={6}>JUMLAH</td>
+                <td className="border border-black p-1">RM {grandTotalElaun.toFixed(2)}</td>
               </tr>
             </tbody>
           </table>
 
-          <div className="mt-16 grid grid-cols-2 gap-12 text-xs font-bold">
-            <div className="space-y-12">
+          <div className="mt-8 grid grid-cols-2 gap-12 text-xs font-bold">
+            <div className="space-y-8">
               <div>Tandatangan Pegawai Bahagian & Cop</div>
               <div className="pt-4 border-t border-black border-dotted w-full"></div>
             </div>
-            <div className="space-y-12">
+            <div className="space-y-8">
               <div>Tandatangan Komandan/Ejutan & Cop</div>
               <div className="pt-4 border-t border-black border-dotted w-full"></div>
             </div>
@@ -1734,7 +1870,10 @@ export default function App() {
 
             {(GOOGLE_SHEET_ID && GOOGLE_SHEET_ID !== "YOUR_GOOGLE_SHEET_ID_HERE") && (
               <button 
-                onClick={() => fetchSheetData(GOOGLE_SHEET_ID, selectedYear)}
+                onClick={() => {
+                  fetchSheetData(GOOGLE_SHEET_ID, selectedYear);
+                  fetchVoucherDataLive();
+                }}
                 disabled={isLoading}
                 className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 rounded-lg text-sm font-medium transition-colors shadow-sm disabled:opacity-50"
               >
@@ -1819,6 +1958,17 @@ export default function App() {
             <Download className="w-4 h-4" />
             Paysheet (backup data)
           </button>
+          <button
+            onClick={() => setActiveTab('ALLOWANCE_LIVE')}
+            className={`flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-t-lg transition-colors ${
+              activeTab === 'ALLOWANCE_LIVE' 
+                ? 'bg-blue-50 text-blue-700 border-b-2 border-blue-700' 
+                : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
+            }`}
+          >
+            <Download className="w-4 h-4" />
+            Paysheet(live data)
+          </button>
         </div>
       </div>
 
@@ -1840,7 +1990,7 @@ export default function App() {
           {(printMode === 'ALL' || activeTab === 'MONTHLY') && (
             <>
               {/* Bulanan (Monthly) */}
-              <div className={`print-page-container mb-12 ${printMode === 'ALL' ? 'html2pdf__page-break' : ''}`}>
+              <div className={`print-page-container mb-12 ${printMode === 'ALL' ? 'html2pdf__page-break page-break-after' : ''}`}>
                 <div className="text-center mb-6">
                   <h2 className="text-xl sm:text-2xl font-bold uppercase tracking-wide text-gray-900">
                     SUKARELAWAN POLIS DIRAJA MALAYSIA KONTINJEN MELAKA
@@ -1859,7 +2009,7 @@ export default function App() {
               </div>
 
               {/* Mingguan (Weekly) */}
-              <div className={`print-page-container mb-12 ${printMode === 'ALL' ? 'html2pdf__page-break' : ''}`}>
+              <div className={`print-page-container mb-12 ${printMode === 'ALL' ? 'html2pdf__page-break page-break-after' : ''}`}>
                 <div className="text-center mb-6">
                   <h2 className="text-xl sm:text-2xl font-bold uppercase tracking-wide text-gray-900">
                     SUKARELAWAN POLIS DIRAJA MALAYSIA KONTINJEN MELAKA
@@ -1878,14 +2028,14 @@ export default function App() {
               </div>
 
               {/* Pangkat (Rank) */}
-              <div className={`print-page-container mb-12 ${printMode === 'ALL' ? 'html2pdf__page-break' : ''}`}>
+              <div className={`print-page-container mb-12 ${printMode === 'ALL' ? 'html2pdf__page-break page-break-after' : ''}`}>
                 {renderRankTable()}
               </div>
             </>
           )}
 
           {(printMode === 'ALL' || activeTab === 'PERSONAL') && (
-            <div className={`print-page-container ${printMode === 'ALL' ? 'html2pdf__page-break' : ''}`}>
+            <div className={`print-page-container ${printMode === 'ALL' ? 'html2pdf__page-break page-break-after' : ''}`}>
               <div className="text-center mb-6">
                 <h2 className="text-xl sm:text-2xl font-bold uppercase tracking-wide text-gray-900">
                   SUKARELAWAN SIMPANAN POLIS DIRAJA MALAYSIA (SSPDRM)
@@ -1905,34 +2055,30 @@ export default function App() {
           )}
 
           {(printMode === 'ALL' || activeTab === 'ALLOWANCE') && (
-            <div className={`print-page-container ${printMode === 'ALL' ? 'html2pdf__page-break' : ''}`}>
-              {/* Voucher Data Configuration hidden as requested */}
-              {/*
-              {activeTab === 'ALLOWANCE' && (
-                <div className="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-lg print:hidden">
-                  <h3 className="text-sm font-bold text-blue-800 mb-2">Voucher Data Configuration</h3>
-                  <div className="flex gap-3">
-                    <input 
-                      type="text" 
-                      value={voucherSheetId}
-                      onChange={(e) => setVoucherSheetId(e.target.value)}
-                      placeholder="Enter Voucher Sheet ID (for Bank/Phone info)"
-                      className="flex-1 px-3 py-2 text-sm border border-blue-300 rounded outline-none focus:ring-2 focus:ring-blue-500"
-                    />
-                    <button 
-                      onClick={() => fetchVoucherData(voucherSheetId)}
-                      className="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded hover:bg-blue-700"
-                    >
-                      Connect
-                    </button>
+            <div className={`print-page-container ${printMode === 'ALL' ? 'html2pdf__page-break page-break-after' : ''}`}>
+              {renderAllowanceTable(false)}
+            </div>
+          )}
+
+          {(printMode === 'ALL' || activeTab === 'ALLOWANCE_LIVE') && (
+            <div className={`print-page-container ${printMode === 'ALL' ? 'html2pdf__page-break page-break-after' : ''}`}>
+              {activeTab === 'ALLOWANCE_LIVE' && (
+                <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg flex items-center justify-between print:hidden">
+                  <div className="flex items-center gap-2">
+                    <div className={`w-2 h-2 rounded-full ${voucherDataLive.length > 0 ? 'bg-green-500' : 'bg-amber-500'}`}></div>
+                    <div className="flex flex-col">
+                      <span className="text-xs font-medium text-blue-800">Live Data Status: {liveDataStatus}</span>
+                    </div>
                   </div>
-                  <p className="text-[10px] text-blue-600 mt-2">
-                    * Enter the ID of the Google Sheet containing columns: NO KOD PVR, NO AKAUN BANK, NAMA BANK, NO TELEFON.
-                  </p>
+                  <button 
+                    onClick={fetchVoucherDataLive}
+                    className="text-[10px] bg-blue-600 text-white px-2 py-1 rounded hover:bg-blue-700 transition-colors"
+                  >
+                    Refresh Live Data
+                  </button>
                 </div>
               )}
-              */}
-              {renderAllowanceTable()}
+              {renderAllowanceTable(true)}
             </div>
           )}
         </div>
