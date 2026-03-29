@@ -1501,7 +1501,7 @@ export default function App() {
               </div>
             </div>
 
-            <div className="text-center mb-2 relative">
+            <div className="text-center mb-2 relative -mt-[30px]">
               <h2 className="text-xl font-bold uppercase">PASUKAN SUKARELAWAN SIMPANAN POLIS</h2>
               <div className="text-sm font-bold mt-1">
                 Daftar Kedatangan dan Jadual Elaun bagi Bulan: <span className="border-b border-black px-4">{selectedMonth} {selectedYear}</span>
@@ -1546,7 +1546,7 @@ export default function App() {
                     <th className="border border-black p-0.5 text-[7px] leading-tight font-bold">Elaun<br/>gantian<br/>tetap<br/>basikal</th>
                   </tr>
                 </thead>
-                <tbody>
+                <tbody className="text-[12px]">
                   {Array.from({ length: 15 }).map((_, idx) => {
                     if (idx < 10) {
                       const noBadan = selectedNoBadanList[idx] || '';
